@@ -15,23 +15,21 @@ func LoadImages(names []string) (r map[string]AciImageMetadata, err error) {
 	}()
 	r = map[string]AciImageMetadata{}
 	for _, name := range names {
-		id := fetchImageAndReturnId(name)
-		m := loadImageMetadata(id, name)
-		r[id] = m
+		r[name] = loadImageMetadata(name)
 	}
 	return
 }
 
-func loadImageMetadata(id, name string) (r AciImageMetadata) {
+func loadImageMetadata(name string) (r AciImageMetadata) {
 	defer func() {
 		if e := recover(); e != nil {
-			panic(fmt.Sprintf("Cannot read metadata of image %s %q: %s", id, name, e))
+			panic(fmt.Sprintf("Cannot read metadata of image %q: %s", name, e))
 		}
 	}()
-	//id := fetchImageAndReturnId(name)
+	id := fetchImageAndReturnId(name)
 	out, e := exec.Command("cat", "src/github.com/mgoltzsche/model/example-aci-image-manifest.json").Output() // TODO: Call rkt
 	panicOnError(e)
-	fmt.Print(string(out))
+	fmt.Print(id + "  " + string(out))
 	e = json.Unmarshal(out, &r)
 	panicOnError(e)
 	r.Name = name

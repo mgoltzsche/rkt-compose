@@ -8,7 +8,6 @@ gofmt -w "$GOPATH"
 
 # Fetch yaml go dependency
 go get gopkg.in/yaml.v2 &&
-go get gopkg.in/coreos/rkt.v1 &&
 
 # Build and run tests
 #go test github.com/mgoltzsche/stringutil &&
