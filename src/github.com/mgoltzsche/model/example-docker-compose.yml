@@ -1,0 +1,30 @@
+version: '2'
+services:
+  myservice:
+    image: example/myimage:latest
+    hostname: myservice.example.org
+    entrypoint: entrypoint.sh
+    ports:
+      - "25:25"
+      - "25:25"
+    env_file:
+      - ./my.env
+    environment:
+      MYVARA: valA
+      MYVARB: valB
+    volumes:
+      - "./myconf.cf:/etc/target.cf"
+  extservice:
+    extends:
+      file: ./extservice/docker-compose.yml
+      service: extservice
+    entrypoint:
+      - entrypoint.sh
+      - arg1
+      - arg2
+    environment:
+      - MYVAR1=val1
+      - MYVAR2=val2
+volumes:
+  datavol:
+    external: true

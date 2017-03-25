@@ -1,0 +1,143 @@
+{
+	"acKind": "ImageManifest",
+	"acVersion": "0.8.9",
+	"name": "registry-1.docker.io/library/owncloud",
+	"labels": [
+		{
+			"name": "arch",
+			"value": "amd64"
+		},
+		{
+			"name": "os",
+			"value": "linux"
+		},
+		{
+			"name": "version",
+			"value": "latest"
+		}
+	],
+	"app": {
+		"exec": [
+			"/entrypoint.sh",
+			"apache2-foreground"
+		],
+		"user": "0",
+		"group": "0",
+		"workingDirectory": "/var/www/html",
+		"environment": [
+			{
+				"name": "PATH",
+				"value": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+			},
+			{
+				"name": "PHPIZE_DEPS",
+				"value": "autoconf \t\tfile \t\tg++ \t\tgcc \t\tlibc-dev \t\tmake \t\tpkg-config \t\tre2c"
+			},
+			{
+				"name": "PHP_INI_DIR",
+				"value": "/usr/local/etc/php"
+			},
+			{
+				"name": "APACHE_CONFDIR",
+				"value": "/etc/apache2"
+			},
+			{
+				"name": "APACHE_ENVVARS",
+				"value": "/etc/apache2/envvars"
+			},
+			{
+				"name": "PHP_EXTRA_BUILD_DEPS",
+				"value": "apache2-dev"
+			},
+			{
+				"name": "PHP_EXTRA_CONFIGURE_ARGS",
+				"value": "--with-apxs2"
+			},
+			{
+				"name": "PHP_CFLAGS",
+				"value": "-fstack-protector-strong -fpic -fpie -O2"
+			},
+			{
+				"name": "PHP_CPPFLAGS",
+				"value": "-fstack-protector-strong -fpic -fpie -O2"
+			},
+			{
+				"name": "PHP_LDFLAGS",
+				"value": "-Wl,-O1 -Wl,--hash-style=both -pie"
+			},
+			{
+				"name": "GPG_KEYS",
+				"value": "0BD78B5F97500D450838F95DFE857D9A90D90EC1 6E4F6AB321FDC07F2C332E3AC2BF0BC433CFC8B3"
+			},
+			{
+				"name": "PHP_VERSION",
+				"value": "5.6.29"
+			},
+			{
+				"name": "PHP_URL",
+				"value": "https://secure.php.net/get/php-5.6.29.tar.xz/from/this/mirror"
+			},
+			{
+				"name": "PHP_ASC_URL",
+				"value": "https://secure.php.net/get/php-5.6.29.tar.xz.asc/from/this/mirror"
+			},
+			{
+				"name": "PHP_SHA256",
+				"value": "0ff352a433f73e2c82b0d5b283b600402518569bf72a74e247f356dacbf322a7"
+			},
+			{
+				"name": "PHP_MD5",
+				"value": "190bf5b52d1fc68d5500a8cdc7e33164"
+			},
+			{
+				"name": "OWNCLOUD_VERSION",
+				"value": "9.1.3"
+			}
+		],
+		"mountPoints": [
+			{
+				"name": "volume-var-www-html",
+				"path": "/var/www/html"
+			}
+		],
+		"ports": [
+			{
+				"name": "80-tcp",
+				"protocol": "tcp",
+				"port": 80,
+				"count": 1,
+				"socketActivated": false
+			}
+		]
+	},
+	"annotations": [
+		{
+			"name": "created",
+			"value": "2017-01-18T01:14:02.027829943Z"
+		},
+		{
+			"name": "appc.io/docker/originalname",
+			"value": "owncloud"
+		},
+		{
+			"name": "appc.io/docker/registryurl",
+			"value": "registry-1.docker.io"
+		},
+		{
+			"name": "appc.io/docker/repository",
+			"value": "library/owncloud"
+		},
+		{
+			"name": "appc.io/docker/imageid",
+			"value": "sha256:9c18e7c0f6e5f2f094239b6d55acfec8dedd34ac28821d7c952877f165597f48"
+		},
+		{
+			"name": "appc.io/docker/entrypoint",
+			"value": "[\"/entrypoint.sh\"]"
+		},
+		{
+			"name": "appc.io/docker/cmd",
+			"value": "[\"apache2-foreground\"]"
+		}
+	]
+}
