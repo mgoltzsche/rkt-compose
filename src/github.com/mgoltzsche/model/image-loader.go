@@ -4,72 +4,162 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/mgoltzsche/utils"
+	"io/ioutil"
+	"os"
 	"os/exec"
+	"path"
+	"path/filepath"
+	"strings"
 )
 
-func LoadImages(names []string) (r map[string]AciImageMetadata, err error) {
+type Images struct {
+	pod      *PodDescriptor
+	filePath string
+	cache    map[string]*ImageMetadata
+}
+
+func NewImages(pod *PodDescriptor, filePath string) *Images {
+	imgs := &Images{pod, filePath, map[string]*ImageMetadata{}}
+	return imgs
+}
+
+func (self *Images) LoadImage(name string) (r *ImageMetadata, err error) {
 	defer func() {
 		if e := recover(); e != nil {
-			err = errors.New(fmt.Sprintf("image loader: %s", e))
+			err = errors.New(strings.TrimRight(fmt.Sprintf("image loader: %s", e), "\n"))
 		}
 	}()
-	r = map[string]AciImageMetadata{}
-	for _, name := range names {
-		r[name] = loadImageMetadata(name)
+	cached := self.cache[name]
+	if cached != nil {
+		r = cached
+		return
 	}
-	return
-}
-
-func loadImageMetadata(name string) (r AciImageMetadata) {
-	defer func() {
-		if e := recover(); e != nil {
-			panic(fmt.Sprintf("Cannot read metadata of image %q: %s", name, e))
-		}
-	}()
-	id := fetchImageAndReturnId(name)
-	out, e := exec.Command("cat", "src/github.com/mgoltzsche/model/example-aci-image-manifest.json").Output() // TODO: Call rkt
-	panicOnError(e)
-	fmt.Print(id + "  " + string(out))
-	e = json.Unmarshal(out, &r)
-	panicOnError(e)
+	r = &ImageMetadata{"", []string{}, "", map[string]string{}, map[string]*ImagePort{}, map[string]string{}}
+	id := strings.TrimRight(string(execCommand("rkt", "fetch", "--pull-policy=new", "--insecure-options=image", name)), "\n")
+	out := execCommand("rkt", "image", "cat-manifest", id)
+	aci := aciImageMetadata{}
+	app := &aci.App
+	e := json.Unmarshal(out, &aci)
+	if e != nil {
+		panic(e)
+	}
 	r.Name = name
+	r.Exec = app.Exec
+	r.WorkingDirectory = app.WorkingDirectory
+	for _, mp := range app.MountPoints {
+		r.MountPoints[mp.Name] = mp.Path
+	}
+	for _, p := range app.Ports {
+		r.Ports[p.Name] = &ImagePort{p.Protocol, p.Port}
+	}
+	for _, env := range app.Environment {
+		r.Environment[env.Name] = env.Value
+	}
+	self.cache[name] = r
 	return
 }
 
-func fetchImageAndReturnId(name string) string {
-	/*out, e := exec.Command("rkt", "fetch", "--insecure-options=image", name).Output()
-	panicOnError(e)
-	return string(out)*/
-	return "addf"
+func (self *Images) buildImage(servName string, s *ServiceDescriptor) (r *ImageMetadata, err error) {
+	imgName := self.toImageName(servName, s)
+	cached := self.cache[imgName]
+	if cached != nil {
+		r = cached
+		return
+	}
+	// TODO: lookup (and build) image
+	// TODO: lookup
+	dockerImgFile, err := ioutil.TempFile("", "docker-image")
+	if err != nil {
+
+	}
+	defer removeFile(dockerImgFile.Name())
+	// aciImgFileName := utils.ToId(imgName) + ".aci"
+	execCommand("docker", "build", "-t", imgName, "--rm", filepath.FromSlash(self.toImageDescriptorFile(s.Build)))
+	execCommand("docker", "save", "--output", dockerImgFile.Name(), imgName)
+	self.cache[imgName] = r
+	return
 }
 
-type AciImageMetadata struct {
-	Name string
-	App  AciApp
+func (self *Images) toImageName(servName string, s *ServiceDescriptor) string {
+	if len(s.Image) > 0 {
+		return s.Image
+	} else {
+		df := self.toImageDescriptorFile(s.Build)
+		st, err := os.Stat(df)
+		if err != nil {
+			panic(fmt.Sprintf("image loader: %s: %s", df, err))
+		}
+		return "local/" + utils.ToId(self.pod.Name+"-"+servName+"-"+s.Build.Context) + ":" + st.ModTime().Format("yyMMddhhmmss")
+	}
 }
 
-type AciApp struct {
+func (self *Images) toImageDescriptorFile(b *ServiceBuildDescriptor) string {
+	df := b.Dockerfile
+	if df == "" {
+		df = "Dockerfile"
+	}
+	return utils.AbsPath(path.Join(b.Context, df), self.filePath)
+}
+
+func execCommand(name string, args ...string) []byte {
+	cmd := exec.Command(name, args...)
+	cmd.Stderr = os.Stderr
+	out, e := cmd.Output()
+	if e != nil {
+		panic(fmt.Sprintf("%s: %s", name, e))
+	}
+	return out
+}
+
+func removeFile(file string) {
+	e := os.Remove(file)
+	if e != nil {
+		os.Stderr.WriteString(fmt.Sprintf("image loader: cannot remove file %q: %s", file, e))
+	}
+}
+
+type ImageMetadata struct {
+	Name             string
 	Exec             []string
 	WorkingDirectory string
-	MountPoints      []AciMountPoint
-	Ports            []AciPort
-	Environment      []AciEnvVar
+	MountPoints      map[string]string
+	Ports            map[string]*ImagePort
+	Environment      map[string]string
 }
 
-type AciMountPoint struct {
-	Name string
-	Path string
+type ImagePort struct {
+	Protocol string `json:"protocol"`
+	Port     uint16 `json:"port"`
 }
 
-type AciPort struct {
-	Name            string
-	Protocol        string
-	Port            uint32
-	Count           uint32
-	SocketActivated bool
+type aciImageMetadata struct {
+	Name string `json:"name"`
+	App  aciApp `json:"app"`
 }
 
-type AciEnvVar struct {
-	Name  string
-	Value string
+type aciApp struct {
+	Exec             []string         `json:"exec"`
+	WorkingDirectory string           `json:"workingDirectory"`
+	MountPoints      []*aciMountPoint `json:"mountPoints"`
+	Ports            []*aciImagePort  `json:"ports"`
+	Environment      []*aciEnvVar     `json:"environment"`
+}
+
+type aciImagePort struct {
+	Name            string `json:"name"`
+	Protocol        string `json:"protocol"`
+	Port            uint16 `json:"port"`
+	Count           uint16 `json:"count"`
+	SocketActivated bool   `json:"socketActivated"`
+}
+
+type aciMountPoint struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
+}
+
+type aciEnvVar struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
 }

@@ -1,0 +1,46 @@
+version: '2'
+services:
+  myservice:
+    image: owncloud:latest
+    hostname: owncloud.example.org
+    entrypoint: entrypoint.sh
+    ports:
+      - "3330-3335:5550-5555"
+      - "2220-2221:3330-3331/udp"
+    env_file:
+      - ./my.env
+    environment:
+      MYVARA: valA
+      MYVARB: valB
+  extservice:
+    extends:
+      file: ./extended-service/extservice.yml
+      service: extservice
+    env_file:
+      - ./additional.env
+    environment:
+      - MYVAR1=val1
+      - MYVAR2=val2
+    ports:
+      - "80"
+      - "25:25"
+    volumes:
+      - "./additional.cf:/etc/additional.cf"
+      - "datavol:/data"
+  selfbuilt1:
+    build: .
+  selfbuilt2:
+    build:
+      context: .
+      dockerfile: Dockerfile-alternate
+      args:
+        buildno: 1
+        myprop: myvalue
+        featureenabled: true
+  extbuild:
+    extends:
+      file: ./extended-service/extservice.yml
+      service: extselfbuilt
+volumes:
+  datavol:
+    external: true

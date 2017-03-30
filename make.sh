@@ -8,6 +8,7 @@ gofmt -w "$GOPATH"
 
 # Fetch yaml go dependency
 go get gopkg.in/yaml.v2 &&
+#go get gopkg.in/appc/docker2aci.v0 &&
 
 # Build and run tests
 #go test github.com/mgoltzsche/stringutil &&
@@ -16,4 +17,4 @@ go get gopkg.in/yaml.v2 &&
 go install github.com/mgoltzsche/rkt-compose &&
 
 # Run
-"$GOPATH/bin/rkt-compose" "$GOPATH/src/github.com/mgoltzsche/model/example-docker-compose.yml"
+sudo "$GOPATH/bin/rkt-compose" resources/example-docker-compose.yml testpod

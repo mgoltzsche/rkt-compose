@@ -5,20 +5,21 @@ import (
 	"fmt"
 	"github.com/mgoltzsche/model"
 	"os"
+	"path/filepath"
 )
 
 func main() {
-	res, err := model.ReadDockerCompose(os.Args[1])
+	descrFile, err := filepath.Abs(os.Args[1])
+	if err != nil {
+		printErrorAndExit(err)
+	}
+	pod, err := model.LoadModel(descrFile)
+	if len(os.Args) > 1 {
+		pod.Name = os.Args[2]
+	}
 	if err == nil {
-		/*for i := 0; i < len(res.Services); i++ {
-			fmt.Println(res.Services[i].Value)
-		}*/
-		for k, v := range res.Services {
-			fmt.Println(k)
-			fmt.Println(v)
-		}
-
-		j, err := json.MarshalIndent(res, "", "  ")
+		imgLoader := model.NewImages(pod, descrFile)
+		j, err := json.MarshalIndent(pod, "", "  ")
 		if err != nil {
 			fmt.Println(err)
 			os.Exit(1)
@@ -26,17 +27,17 @@ func main() {
 			fmt.Println(string(j))
 		}
 
-		m, err := model.LoadImages([]string{"sfs"})
+		img, err := imgLoader.LoadImage("docker://owncloud:latest")
 		if err != nil {
 			printErrorAndExit(err)
 		}
-		fmt.Println(m)
+		fmt.Println(img)
 	} else {
 		printErrorAndExit(err)
 	}
 }
 
 func printErrorAndExit(e error) {
-	fmt.Println(e)
+	os.Stderr.WriteString(fmt.Sprintf("Error: %s\n", e))
 	os.Exit(1)
 }

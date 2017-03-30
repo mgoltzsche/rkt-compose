@@ -7,7 +7,7 @@ import (
 
 var notIdCharRegexp = regexp.MustCompile("[^a-z0-9\\-]+")
 
-func Run(p *model.PodDecl) error {
+func Run(p *model.PodDescriptor) error {
 
 }
 

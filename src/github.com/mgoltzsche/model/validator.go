@@ -6,6 +6,6 @@ import (
 
 var idRegex = regexp.MustCompile("[a-z0-9\\-]+")
 
-func Validate(p *PodDecl) error {
+func Validate(p *PodDescriptor) []string {
 	return nil
 }
