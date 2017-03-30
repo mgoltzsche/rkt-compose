@@ -18,16 +18,18 @@ func main() {
 		pod.Name = os.Args[2]
 	}
 	if err == nil {
-		imgLoader := model.NewImages(pod, descrFile)
+		images, err := model.NewImages(pod, descrFile)
+		if err != nil {
+			printErrorAndExit(err)
+		}
 		j, err := json.MarshalIndent(pod, "", "  ")
 		if err != nil {
-			fmt.Println(err)
-			os.Exit(1)
+			printErrorAndExit(err)
 		} else {
 			fmt.Println(string(j))
 		}
 
-		img, err := imgLoader.LoadImage("docker://owncloud:latest")
+		img, err := images.Image("selfbuilt", pod.Services["selfbuilt"])
 		if err != nil {
 			printErrorAndExit(err)
 		}

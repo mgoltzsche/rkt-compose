@@ -1,7 +1,6 @@
 package utils
 
 import (
-	"fmt"
 	"path"
 	"regexp"
 	"strings"
@@ -21,7 +20,6 @@ func RelPath(p, basePath string) string {
 	p = path.Clean(p)
 	if len(p) == 0 || p[0:1] == "/" {
 		baseDir := path.Clean(path.Dir(basePath))
-		fmt.Println(baseDir + " " + p)
 		switch {
 		case p == baseDir:
 			p = "."

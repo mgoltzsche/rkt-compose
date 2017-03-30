@@ -1,0 +1,6 @@
+version: '2'
+services:
+  myservice:
+    image: alpine:latest
+  selfbuilt:
+    build: docker-build

@@ -4,6 +4,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/appc/docker2aci/lib"
+	"github.com/appc/docker2aci/lib/common"
+	"github.com/appc/docker2aci/pkg/log"
 	"github.com/mgoltzsche/utils"
 	"io/ioutil"
 	"os"
@@ -16,27 +19,41 @@ import (
 type Images struct {
 	pod      *PodDescriptor
 	filePath string
-	cache    map[string]*ImageMetadata
+	images   map[string]*ImageMetadata
 }
 
-func NewImages(pod *PodDescriptor, filePath string) *Images {
-	imgs := &Images{pod, filePath, map[string]*ImageMetadata{}}
-	return imgs
-}
-
-func (self *Images) LoadImage(name string) (r *ImageMetadata, err error) {
+func NewImages(pod *PodDescriptor, filePath string) (r *Images, err error) {
 	defer func() {
 		if e := recover(); e != nil {
-			err = errors.New(strings.TrimRight(fmt.Sprintf("image loader: %s", e), "\n"))
+			err = errors.New(fmt.Sprintf("image loader: %s", e))
 		}
 	}()
-	cached := self.cache[name]
-	if cached != nil {
-		r = cached
-		return
+	r = &Images{pod, filePath, map[string]*ImageMetadata{}}
+	for k, s := range pod.Services {
+		var img *ImageMetadata
+		if s.Build == nil {
+			img = r.fetchImage(s.Image)
+		} else {
+			img = r.buildImage(k, s)
+		}
+		r.images[img.Name] = img
 	}
-	r = &ImageMetadata{"", []string{}, "", map[string]string{}, map[string]*ImagePort{}, map[string]string{}}
-	id := strings.TrimRight(string(execCommand("rkt", "fetch", "--pull-policy=new", "--insecure-options=image", name)), "\n")
+	return
+}
+
+func (self *Images) Image(servName string, s *ServiceDescriptor) (img *ImageMetadata, err error) {
+	imgName := self.toImageName(servName, s)
+	img = self.images[imgName]
+	if img == nil {
+		err = errors.New(fmt.Sprintf("images: unknown %q", imgName))
+	}
+	return
+}
+
+func (self *Images) fetchImage(name string) *ImageMetadata {
+	r := &ImageMetadata{"", []string{}, "", map[string]string{}, map[string]*ImagePort{}, map[string]string{}}
+	fmt.Println("fetching " + name)
+	id := toTrimmedString(execCommand("rkt", "fetch", "--pull-policy=new", "--insecure-options=image", name))
 	out := execCommand("rkt", "image", "cat-manifest", id)
 	aci := aciImageMetadata{}
 	app := &aci.App
@@ -56,29 +73,18 @@ func (self *Images) LoadImage(name string) (r *ImageMetadata, err error) {
 	for _, env := range app.Environment {
 		r.Environment[env.Name] = env.Value
 	}
-	self.cache[name] = r
-	return
+	return r
 }
 
-func (self *Images) buildImage(servName string, s *ServiceDescriptor) (r *ImageMetadata, err error) {
+func (self *Images) buildImage(servName string, s *ServiceDescriptor) *ImageMetadata {
 	imgName := self.toImageName(servName, s)
-	cached := self.cache[imgName]
-	if cached != nil {
-		r = cached
-		return
-	}
 	// TODO: lookup (and build) image
 	// TODO: lookup
-	dockerImgFile, err := ioutil.TempFile("", "docker-image")
-	if err != nil {
-
-	}
-	defer removeFile(dockerImgFile.Name())
-	// aciImgFileName := utils.ToId(imgName) + ".aci"
-	execCommand("docker", "build", "-t", imgName, "--rm", filepath.FromSlash(self.toImageDescriptorFile(s.Build)))
-	execCommand("docker", "save", "--output", dockerImgFile.Name(), imgName)
-	self.cache[imgName] = r
-	return
+	imgFile := filepath.FromSlash(self.toImageDescriptorFile(s.Build))
+	fmt.Println("building docker image from " + imgFile)
+	execCommand("docker", "build", "-t", imgName, "--rm", filepath.Dir(imgFile))
+	importLocalDockerImage(imgName)
+	return self.fetchImage(imgName)
 }
 
 func (self *Images) toImageName(servName string, s *ServiceDescriptor) string {
@@ -86,11 +92,11 @@ func (self *Images) toImageName(servName string, s *ServiceDescriptor) string {
 		return s.Image
 	} else {
 		df := self.toImageDescriptorFile(s.Build)
-		st, err := os.Stat(df)
+		_, err := os.Stat(df)
 		if err != nil {
-			panic(fmt.Sprintf("image loader: %s: %s", df, err))
+			panic(fmt.Sprintf("%s: %s", df, err))
 		}
-		return "local/" + utils.ToId(self.pod.Name+"-"+servName+"-"+s.Build.Context) + ":" + st.ModTime().Format("yyMMddhhmmss")
+		return "local/" + utils.ToId(self.pod.Name+"-"+servName+"-"+s.Build.Context) + ":latest" //+ st.ModTime().Format("yyMMddhhmmss")
 	}
 }
 
@@ -102,20 +108,56 @@ func (self *Images) toImageDescriptorFile(b *ServiceBuildDescriptor) string {
 	return utils.AbsPath(path.Join(b.Context, df), self.filePath)
 }
 
+func importLocalDockerImage(imgName string) {
+	dockerImgFile, err := ioutil.TempFile("", "docker-image-")
+	if err != nil {
+		panic("cannot create temp file")
+	}
+	defer removeFile(dockerImgFile.Name())
+	execCommand("docker", "save", "--output", dockerImgFile.Name(), imgName)
+	d2aNopLogger := log.NewNopLogger()
+	d2aCfg := docker2aci.FileConfig{
+		CommonConfig: docker2aci.CommonConfig{
+			Squash:      true,
+			OutputDir:   os.TempDir(),
+			TmpDir:      os.TempDir(),
+			Compression: common.GzipCompression,
+			Debug:       d2aNopLogger,
+			Info:        d2aNopLogger,
+		},
+		DockerURL: "",
+	}
+	aciLayerPaths, err := docker2aci.ConvertSavedFile(dockerImgFile.Name(), d2aCfg)
+	aciFile := filepath.Join(os.TempDir(), utils.ToId(imgName)+".aci")
+	defer removeFile(aciFile)
+	if len(aciLayerPaths) < 1 {
+		panic(fmt.Sprintf("multiple ACI files returned by docker2aci: %s", err))
+	}
+	cId := execCommand("rkt", "prepare", "--quiet=true", "--insecure-options=image", aciLayerPaths[0])
+	if e := exec.Command("rkt", "rm", toTrimmedString(cId)).Run(); e != nil {
+		panic(fmt.Sprintf("cannot remove rkt container %q", cId))
+	}
+}
+
 func execCommand(name string, args ...string) []byte {
 	cmd := exec.Command(name, args...)
 	cmd.Stderr = os.Stderr
 	out, e := cmd.Output()
 	if e != nil {
-		panic(fmt.Sprintf("%s: %s", name, e))
+		cmd := name + " " + strings.Join(args, " ")
+		panic(fmt.Sprintf("%s: %s", cmd, e))
 	}
 	return out
+}
+
+func toTrimmedString(out []byte) string {
+	return strings.TrimRight(string(out), "\n")
 }
 
 func removeFile(file string) {
 	e := os.Remove(file)
 	if e != nil {
-		os.Stderr.WriteString(fmt.Sprintf("image loader: cannot remove file %q: %s", file, e))
+		os.Stderr.WriteString(fmt.Sprintf("image loader: %s\n", e))
 	}
 }
 
