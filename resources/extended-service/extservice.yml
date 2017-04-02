@@ -1,8 +1,8 @@
 version: '2'
 services:
   extservice:
-    image: nginx:latest
-    hostname: owncloud.example.org
+    image: alpine:latest
+    hostname: service.example.org
     entrypoint:
       - entrypoint.sh
       - arg1

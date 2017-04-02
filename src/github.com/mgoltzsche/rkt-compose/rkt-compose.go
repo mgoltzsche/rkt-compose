@@ -3,43 +3,43 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/mgoltzsche/launcher"
 	"github.com/mgoltzsche/model"
 	"os"
 	"path/filepath"
 )
 
 func main() {
+	defer func() {
+		if e := recover(); e != nil {
+			os.Stderr.WriteString(fmt.Sprintf("Error: %s\n", e))
+			os.Exit(1)
+		}
+	}()
 	descrFile, err := filepath.Abs(os.Args[1])
-	if err != nil {
-		printErrorAndExit(err)
-	}
-	pod, err := model.LoadModel(descrFile)
+	panicOnError(err)
+	models := model.NewDescriptors()
+	pod, err := models.Descriptor(descrFile)
+	panicOnError(err)
+	//dumpModel(pod)
+	err = models.Complete(pod, model.PULL_NEW)
+	panicOnError(err)
 	if len(os.Args) > 1 {
 		pod.Name = os.Args[2]
 	}
-	if err == nil {
-		images, err := model.NewImages(pod, descrFile)
-		if err != nil {
-			printErrorAndExit(err)
-		}
-		j, err := json.MarshalIndent(pod, "", "  ")
-		if err != nil {
-			printErrorAndExit(err)
-		} else {
-			fmt.Println(string(j))
-		}
-
-		img, err := images.Image("selfbuilt", pod.Services["selfbuilt"])
-		if err != nil {
-			printErrorAndExit(err)
-		}
-		fmt.Println(img)
-	} else {
-		printErrorAndExit(err)
-	}
+	dumpModel(pod)
+	err = launcher.Run(pod)
+	panicOnError(err)
 }
 
-func printErrorAndExit(e error) {
-	os.Stderr.WriteString(fmt.Sprintf("Error: %s\n", e))
-	os.Exit(1)
+func dumpModel(pod *model.PodDescriptor) {
+	j, err := json.MarshalIndent(pod, "", "  ")
+	panicOnError(err)
+	fmt.Println(string(j))
+}
+
+func panicOnError(e error) {
+	if e != nil {
+		panic(e)
+	}
 }

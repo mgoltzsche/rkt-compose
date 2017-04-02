@@ -1,12 +1,15 @@
 package utils
 
 import (
+	"fmt"
+	"os"
+	"os/exec"
 	"path"
 	"regexp"
 	"strings"
 )
 
-var toIdRegexp = regexp.MustCompile("[^a-z0-9\\-]+")
+var toIdRegexp = regexp.MustCompile("[^a-z0-9]+")
 
 func ToId(v string) string {
 	return strings.Trim(toIdRegexp.ReplaceAllLiteralString(v, "-"), "-")
@@ -40,4 +43,31 @@ func AbsPath(p, basePath string) string {
 	} else {
 		return path.Join(path.Dir(basePath), p)
 	}
+}
+
+func PanicOnError(e error) {
+	if e != nil {
+		panic(e)
+	}
+}
+
+func ExecCommand(name string, args ...string) []byte {
+	cmd := exec.Command(name, args...)
+	cmd.Stderr = os.Stderr
+	out, e := cmd.Output()
+	if e != nil {
+		fmt.Println(string(out))
+		cmd := ""
+		if len(args) > 5 {
+			cmd = name + "\n  " + strings.Join(args, "\n  ")
+		} else {
+			cmd = name + " " + strings.Join(args, " ")
+		}
+		panic(fmt.Sprintf("%s. cmd: %s", e, cmd))
+	}
+	return out
+}
+
+func ToTrimmedString(out []byte) string {
+	return strings.TrimRight(string(out), "\n")
 }

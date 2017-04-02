@@ -1,6 +1,7 @@
 package model
 
 import (
+	"bufio"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -8,6 +9,7 @@ import (
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -16,65 +18,188 @@ import (
 
 var idRegexp = regexp.MustCompile("^[a-z0-9\\-]+$")
 
-func LoadModel(file string) (r *PodDescriptor, err error) {
+type Descriptors struct {
+	descriptors map[string]*PodDescriptor
+}
+
+func NewDescriptors() *Descriptors {
+	return &Descriptors{map[string]*PodDescriptor{}}
+}
+
+func (self *Descriptors) Descriptor(file string) (r *PodDescriptor, err error) {
 	defer func() {
 		if e := recover(); e != nil {
 			err = errors.New(fmt.Sprintf("model: %s", e))
 		}
 	}()
-	file = filepath.ToSlash(file)
-	r = loadModel(file)
+	file = path.Clean(filepath.ToSlash(file))
+	r = self.loadDescriptor(file)
 	return
 }
 
-func loadModel(file string) (r *PodDescriptor) {
+func (self *Descriptors) Complete(pod *PodDescriptor, pullPolicy PullPolicy) (err error) {
 	defer func() {
 		if e := recover(); e != nil {
-			panic(fmt.Sprintf("%q: %s", file, e))
+			err = errors.New(fmt.Sprintf("extend: %q: %s", pod.File, e))
 		}
 	}()
-	file = resolveDescriptorFile(file)
-	fileExt := filepath.Ext(file)
-	r = NewPodDescriptor()
-	if fileExt == ".yml" || fileExt == ".yaml" {
-		readDockerCompose(file, r)
-	} else {
-		readPodJson(file, r)
-	}
-	for _, v := range r.Services {
-		if v.EnvFile == nil {
-			v.EnvFile = []string{}
+	self.resolveExtensions(pod, map[string]bool{})
+	resolveEnvFiles(pod)
+	fileMountsToVolumes(pod)
+	addFetchedImages(pod, pullPolicy)
+	addImageVolumes(pod)
+	for _, s := range pod.Services {
+		if len(s.Entrypoint) == 0 {
+			s.Entrypoint = s.FetchedImage.Exec
 		}
-		if v.Environment == nil {
-			v.Environment = map[string]string{}
-		}
-		if v.Ports == nil {
-			v.Ports = map[string]string{}
-		}
-		if v.Mounts == nil {
-			v.Mounts = map[string]string{}
+		if len(s.Image) == 0 {
+			s.Image = s.FetchedImage.Name
 		}
 	}
-	validate(r)
-	resolveExtensions(file, r)
+	return
+}
+
+func (self *Descriptors) loadDescriptor(filePath string) (r *PodDescriptor) {
+	defer func() {
+		if e := recover(); e != nil {
+			panic(fmt.Sprintf("%q: %s", filePath, e))
+		}
+	}()
+	r = self.descriptors[filePath]
+	if r == nil {
+		filePath = resolveDescriptorFile(filePath)
+		fileExt := filepath.Ext(filePath)
+		r = NewPodDescriptor()
+		if fileExt == ".yml" || fileExt == ".yaml" {
+			readDockerCompose(filePath, r)
+		} else {
+			readPodJson(filePath, r)
+		}
+		r.File = filePath
+		for _, v := range r.Services {
+			if v.Entrypoint == nil {
+				v.Entrypoint = []string{}
+			}
+			if v.Command == nil {
+				v.Command = []string{}
+			}
+			if v.EnvFile == nil {
+				v.EnvFile = []string{}
+			}
+			if v.Environment == nil {
+				v.Environment = map[string]string{}
+			}
+			if v.Ports == nil {
+				v.Ports = map[string]string{}
+			}
+			if v.Mounts == nil {
+				v.Mounts = map[string]string{}
+			}
+		}
+		validate(r)
+		self.descriptors[filePath] = r
+	}
 	return r
 }
 
-func resolveExtensions(file string, d *PodDescriptor) {
+func resolveEnvFiles(d *PodDescriptor) {
+	for _, s := range d.Services {
+		for _, f := range s.EnvFile {
+			for k, v := range readEnvFile(utils.AbsPath(f, d.File)) {
+				s.Environment[k] = v
+			}
+		}
+		s.EnvFile = nil
+	}
+}
+
+func readEnvFile(file string) map[string]string {
+	r := map[string]string{}
+	f, err := os.Open(filepath.FromSlash(file))
+	if err != nil {
+		panic(fmt.Sprintf("cannot open %q: %s", file, err))
+	}
+	defer f.Close()
+	scanner := bufio.NewScanner(f)
+	i := 0
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line != "" && strings.Index(line, "#") != 0 {
+			kv := strings.SplitN(line, "=", 2)
+			assertTrue(len(kv) == 2, fmt.Sprintf("invalid env file line %d: %q", i, kv), file)
+			r[kv[0]] = kv[1]
+		}
+		i++
+	}
+	panicOnError(scanner.Err())
+	return r
+}
+
+func fileMountsToVolumes(pod *PodDescriptor) {
+	for _, s := range pod.Services {
+		for k, v := range s.Mounts {
+			if utils.IsPath(v) {
+				volName := utils.ToId(v)
+				s.Mounts[k] = volName
+				if _, ok := pod.Volumes[volName]; !ok {
+					pod.Volumes[volName] = &VolumeDescriptor{v, "host", false}
+				}
+			}
+		}
+	}
+}
+
+func addFetchedImages(pod *PodDescriptor, pullPolicy PullPolicy) {
+	imgs := NewImages(pod, pullPolicy)
+	for _, s := range pod.Services {
+		img, err := imgs.Image(s)
+		panicOnError(err)
+		s.FetchedImage = img
+	}
+}
+
+func addImageVolumes(pod *PodDescriptor) {
+	for _, s := range pod.Services {
+		for volName, _ := range s.FetchedImage.MountPoints {
+			if _, ok := pod.Volumes[volName]; !ok {
+				src := "./volumes/" + volName
+				pod.Volumes[volName] = &VolumeDescriptor{src, "host", false}
+			}
+		}
+	}
+}
+
+func (self *Descriptors) resolveExtensions(d *PodDescriptor, visited map[string]bool) {
 	for k, s := range d.Services {
 		if s.Extends != nil {
 			kPath := ".services." + k
 			assertTrue(len(s.Extends.File) > 0, "empty", kPath+".extends.file")
-			f := utils.AbsPath(s.Extends.File, file)
-			assertTrue(fileExists(f), "file does not exist: "+f, kPath+".extends.file")
-			extServ := loadModel(f).Services[s.Extends.Service]
+			extPod := d
+			if len(s.Extends.File) > 0 {
+				f := utils.AbsPath(s.Extends.File, d.File)
+				assertTrue(fileExists(f), "file does not exist: "+f, kPath+".extends.file")
+				extPod = self.loadDescriptor(f)
+			}
+			extServ := extPod.Services[s.Extends.Service]
+			extKey := extPod.File + "/" + s.Extends.Service
 			assertTrue(extServ != nil, "unresolvable: "+s.Extends.Service, kPath+".extends.service")
+			if _, ok := visited[extKey]; ok {
+				i := 0
+				keys := make([]string, len(visited))
+				for k := range visited {
+					keys[i] = k
+					i++
+				}
+				panic(fmt.Sprintf("circular extension: %s", keys))
+			}
+			visited[extKey] = true
+			self.resolveExtensions(extPod, visited)
 			if extServ.Build != nil {
 				if s.Build == nil {
 					s.Build = &ServiceBuildDescriptor{}
 				}
 				if len(s.Build.Context) == 0 {
-					s.Build.Context = utils.RelPath(utils.AbsPath(extServ.Build.Context, f), file)
+					s.Build.Context = utils.RelPath(utils.AbsPath(extServ.Build.Context, extPod.File), d.File)
 				}
 				if len(s.Build.Dockerfile) == 0 {
 					s.Build.Dockerfile = extServ.Build.Dockerfile
@@ -86,11 +211,11 @@ func resolveExtensions(file string, d *PodDescriptor) {
 			if len(s.Image) == 0 {
 				s.Image = extServ.Image
 			}
-			if len(s.Hostname) == 0 {
-				s.Hostname = extServ.Hostname
+			if len(d.Hostname) == 0 {
+				d.Hostname = extPod.Hostname
 			}
-			if len(s.Domainname) == 0 {
-				s.Domainname = extServ.Domainname
+			if len(d.Domainname) > 0 {
+				d.Domainname = extPod.Domainname
 			}
 			if s.Entrypoint == nil {
 				s.Entrypoint = extServ.Entrypoint
@@ -100,7 +225,7 @@ func resolveExtensions(file string, d *PodDescriptor) {
 			}
 			envFiles := []string{}
 			for _, ef := range extServ.EnvFile {
-				envFiles = append(envFiles, utils.RelPath(utils.AbsPath(ef, f), file))
+				envFiles = append(envFiles, utils.RelPath(utils.AbsPath(ef, extPod.File), d.File))
 			}
 			for _, ef := range s.EnvFile {
 				envFiles = append(envFiles, ef)
@@ -111,14 +236,14 @@ func resolveExtensions(file string, d *PodDescriptor) {
 			m := map[string]string{}
 			for t, v := range extServ.Mounts {
 				if utils.IsPath(v) {
-					m[t] = utils.AbsPath(v, f)
+					m[t] = utils.AbsPath(v, extPod.File)
 				} else {
 					m[t] = v
 				}
 			}
 			for t, v := range s.Mounts {
 				if utils.IsPath(v) {
-					m[t] = utils.AbsPath(v, file)
+					m[t] = utils.AbsPath(v, d.File)
 				} else {
 					m[t] = v
 				}
@@ -126,7 +251,7 @@ func resolveExtensions(file string, d *PodDescriptor) {
 			s.Mounts = map[string]string{}
 			for t, v := range m {
 				if utils.IsPath(v) {
-					s.Mounts[t] = utils.RelPath(v, file)
+					s.Mounts[t] = utils.RelPath(v, d.File)
 				} else {
 					s.Mounts[t] = v
 				}
@@ -161,12 +286,6 @@ func validate(d *PodDescriptor) {
 	}
 }
 
-func assertTrue(e bool, msg, jpath string) {
-	if !e {
-		panic(fmt.Sprintf("%s: %s", jpath, msg))
-	}
-}
-
 func resolveDescriptorFile(file string) string {
 	if !fileExists(file) {
 		panic("File does not exist")
@@ -181,25 +300,6 @@ func resolveDescriptorFile(file string) string {
 		panic("Descriptor file not found. Lookedup: pod.json, docker-compose.ya?ml")
 	}
 	return file
-}
-
-func fileExists(file string) bool {
-	if _, err := os.Stat(filepath.FromSlash(file)); err != nil {
-		if os.IsNotExist(err) {
-			return false
-		} else {
-			panic(err)
-		}
-	}
-	return true
-}
-
-func isDirectory(file string) bool {
-	s, e := os.Stat(filepath.FromSlash(file))
-	if e != nil {
-		panic(e)
-	}
-	return s.IsDir()
 }
 
 func readPodJson(file string, r *PodDescriptor) {
@@ -244,8 +344,12 @@ func transformDockerCompose(c *dockerCompose, r *PodDescriptor) {
 		s.Command = toStringArray(v.Command, p+".command")
 		s.EnvFile = v.EnvFile
 		s.Environment = toStringMap(v.Environment, p+".environment")
-		s.Hostname = v.Hostname
-		s.Domainname = v.Domainname
+		if len(r.Hostname) == 0 {
+			r.Hostname = v.Hostname
+		}
+		if len(r.Domainname) == 0 {
+			r.Domainname = v.Domainname
+		}
 		s.Mounts = toVolumeMounts(v.Volumes, p+".volumes")
 		s.Ports = toPorts(v.Ports, p+".ports")
 		s.HealthCheck = toHealthCheckDescriptor(v.HealthCheck, p+".healthcheck")
@@ -428,12 +532,6 @@ func toString(v interface{}, ctx string) string {
 		return strconv.Itoa(v.(int))
 	default:
 		panic(fmt.Sprintf("String expected at %s", ctx))
-	}
-}
-
-func panicOnError(e error) {
-	if e != nil {
-		panic(e)
 	}
 }
 

@@ -2,5 +2,17 @@ version: '2'
 services:
   myservice:
     image: alpine:latest
+    entrypoint: ["/bin/echo", "hello from fetched container"]
+    env_file:
+      - ./example.env
+    volumes:
+      - data:/data
+      - ./example-docker-compose-images.yml:/images.yml
+      - ./example-docker-compose.yml:/example.yml
   selfbuilt:
     build: docker-build
+    volumes:
+      - data:/var/data
+volumes:
+  data:
+    external: true

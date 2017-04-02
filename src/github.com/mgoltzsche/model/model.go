@@ -13,11 +13,14 @@ func NewPodDescriptor() *PodDescriptor {
 }
 
 type PodDescriptor struct {
+	File            string                        `json:"-"`
 	Version         uint8                         `json:"version"`
 	Name            string                        `json:"name,omitempty"`
 	Net             string                        `json:"net,omitempty"`
 	Dns             []string                      `json:"dns,omitempty"`
 	DnsSearch       []string                      `json:"dns_search,omitempty"`
+	Hostname        string                        `json:"hostname,omitempty"`
+	Domainname      string                        `json:"domainname,omitempty"`
 	InjectHosts     bool                          `json:"inject_hosts"`
 	Environment     map[string]string             `json:"environment,omitempty"`
 	Services        map[string]*ServiceDescriptor `json:"services"`
@@ -27,18 +30,17 @@ type PodDescriptor struct {
 }
 
 type ServiceDescriptor struct {
-	Extends     *ServiceDescriptorExtension `json:"extends,omitempty"`
-	Image       string                      `json:"image,omitempty"`
-	Build       *ServiceBuildDescriptor     `json:"build,omitempty"`
-	Hostname    string                      `json:"hostname,omitempty"`
-	Domainname  string                      `json:"domainname,omitempty"`
-	Entrypoint  []string                    `json:"entrypoint,omitempty"`
-	Command     []string                    `json:"command,omitempty"`
-	EnvFile     []string                    `json:"env_file,omitempty"`
-	Environment map[string]string           `json:"environment,omitempty"`
-	HealthCheck *HealthCheckDescriptor      `json:"healthcheck,omitempty"`
-	Ports       map[string]string           `json:"ports,omitempty"`
-	Mounts      map[string]string           `json:"mounts,omitempty"`
+	Extends      *ServiceDescriptorExtension `json:"extends,omitempty"`
+	FetchedImage *ImageMetadata              `json:"-"`
+	Image        string                      `json:"image,omitempty"`
+	Build        *ServiceBuildDescriptor     `json:"build,omitempty"`
+	Entrypoint   []string                    `json:"entrypoint,omitempty"`
+	Command      []string                    `json:"command,omitempty"`
+	EnvFile      []string                    `json:"env_file,omitempty"`
+	Environment  map[string]string           `json:"environment,omitempty"`
+	HealthCheck  *HealthCheckDescriptor      `json:"healthcheck,omitempty"`
+	Ports        map[string]string           `json:"ports,omitempty"`
+	Mounts       map[string]string           `json:"mounts,omitempty"`
 }
 
 type ServiceBuildDescriptor struct {
