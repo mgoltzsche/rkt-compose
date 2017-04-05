@@ -2,17 +2,23 @@ version: '2'
 services:
   myservice:
     image: alpine:latest
-    entrypoint: ["/bin/echo", "hello from fetched container"]
+    entrypoint: ["/bin/sh", "-c", "echo hello from fetched container; sleep 5; echo terminating"]
     env_file:
       - ./example.env
     volumes:
       - data:/data
       - ./example-docker-compose-images.yml:/images.yml
       - ./example-docker-compose.yml:/example.yml
+    healthcheck:
+      test: echo healthy myservice
+      interval: "10s"
   selfbuilt:
     build: docker-build
     volumes:
       - data:/var/data
+    healthcheck:
+      test: echo healthy selfbuilt
+      interval: "10s"
 volumes:
   data:
     external: true

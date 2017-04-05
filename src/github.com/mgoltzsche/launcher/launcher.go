@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type args struct {
@@ -25,7 +26,7 @@ func (a *args) add(arg ...string) *args {
 	return a
 }
 
-func (a *args) toStringSlice() []string {
+func (a *args) toSlice() []string {
 	return a.values
 }
 
@@ -35,16 +36,19 @@ func Run(pod *model.PodDescriptor) (err error) {
 			err = errors.New(fmt.Sprintf("run: %s", e))
 		}
 	}()
-	prepareArgs := toRktPrepareArgs(pod).toStringSlice()
+	prepareArgs := toRktPrepareArgs(pod).toSlice()
 	runArgs := toRktRunArgs(pod)
 	createVolumeDirectories(pod)
 	podUUID := utils.ToTrimmedString(utils.ExecCommand("rkt", prepareArgs...))
 	defer exec.Command("rkt", "gc", "--mark-only").Run()
-	//podUUID := utils.ToTrimmedString(utils.ExecCommand("rkt", "prepare", "--quiet=true", "--insecure-options=image", "docker://alpine:latest", "--exec=/bin/true"))
-	cmd := exec.Command("rkt", runArgs.add(podUUID).toStringSlice()...)
+	// Health checks done within the launcher to be able to run commands within the container
+	healthChecks := toHealthChecks(pod, podUUID)
+	cmd := exec.Command("rkt", runArgs.add(podUUID).toSlice()...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+	healthChecks.Start()
 	err = cmd.Run()
+	healthChecks.Stop()
 	return err
 }
 
@@ -115,6 +119,35 @@ func toRktPrepareArgs(pod *model.PodDescriptor) *args {
 		r.add("---")
 	}
 	return r
+}
+
+func toHealthChecks(pod *model.PodDescriptor, podUUID string) *HealthChecks {
+	handler := func(r *HealthCheckResult) {
+		fmt.Println("health check result ", r)
+	}
+	checks := []*HealthCheck{}
+	for k, s := range pod.Services {
+		h := s.HealthCheck
+		if h != nil && len(h.Command) > 0 {
+			name := pod.Name + "-" + k
+			indicator := toHealthIndicator(pod, k, podUUID, h)
+			check := NewHealthCheck(name, time.Duration(h.Interval), time.Duration(h.Timeout), indicator)
+			checks = append(checks, check)
+		}
+	}
+	return NewHealthChecks(handler, checks...)
+}
+
+func toHealthIndicator(pod *model.PodDescriptor, app, podUUID string, h *model.HealthCheckDescriptor) HealthIndicator {
+	switch {
+	case len(h.Command) > 0:
+		cmd := append([]string{"rkt", "enter", "--app=" + app, podUUID}, h.Command...)
+		return CommandBasedHealthIndicator(cmd...)
+	case len(h.Http) > 0:
+		panic("HTTP health check unsupported")
+	default:
+		panic("no health check indicator defined")
+	}
 }
 
 func absFile(path string, pod *model.PodDescriptor) string {

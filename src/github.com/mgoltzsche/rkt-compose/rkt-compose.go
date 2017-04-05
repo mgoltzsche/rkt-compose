@@ -21,7 +21,6 @@ func main() {
 	models := model.NewDescriptors()
 	pod, err := models.Descriptor(descrFile)
 	panicOnError(err)
-	//dumpModel(pod)
 	err = models.Complete(pod, model.PULL_NEW)
 	panicOnError(err)
 	if len(os.Args) > 1 {

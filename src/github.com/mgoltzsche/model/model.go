@@ -1,5 +1,7 @@
 package model
 
+import "time"
+
 func NewPodDescriptor() *PodDescriptor {
 	r := &PodDescriptor{}
 	r.Version = 1
@@ -66,9 +68,27 @@ type VolumeDescriptor struct {
 }
 
 type HealthCheckDescriptor struct {
-	Test     []string `json:"test,omitempty"`
-	Interval string   `json:"interval"`
-	Timeout  string   `json:"timeout,omitempty"`
+	Command  []string `json:"cmd,omitempty"`
+	Http     string   `json:"http,omitempty"`
+	Interval Duration `json:"interval"`
+	Timeout  Duration `json:"timeout,omitempty"`
 	Retries  uint8    `json:"retries"`
 	Disable  bool     `json:"disable"`
+}
+
+type Duration time.Duration
+
+func (d Duration) MarshalJSON() ([]byte, error) {
+	return []byte("\"" + time.Duration(d).String() + "\""), nil
+}
+
+func (d Duration) UnmarshalJSON(str []byte) error {
+	parsed, e := time.ParseDuration(string(str))
+	d = Duration(parsed)
+	return e
+}
+
+func ParseDuration(str string) (Duration, error) {
+	d, e := time.ParseDuration(str)
+	return Duration(d), e
 }

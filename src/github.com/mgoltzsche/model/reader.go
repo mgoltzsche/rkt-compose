@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 var idRegexp = regexp.MustCompile("^[a-z0-9\\-]+$")
@@ -95,11 +96,25 @@ func (self *Descriptors) loadDescriptor(filePath string) (r *PodDescriptor) {
 			if v.Mounts == nil {
 				v.Mounts = map[string]string{}
 			}
+			if v.HealthCheck != nil {
+				if v.HealthCheck.Interval == 0 {
+					v.HealthCheck.Interval = stdDuration()
+				}
+				if v.HealthCheck.Timeout == 0 {
+					v.HealthCheck.Timeout = stdDuration()
+				}
+			}
 		}
 		validate(r)
 		self.descriptors[filePath] = r
 	}
 	return r
+}
+
+func stdDuration() Duration {
+	d, e := time.ParseDuration("10s")
+	panicOnError(e)
+	return Duration(d)
 }
 
 func resolveEnvFiles(d *PodDescriptor) {
@@ -256,6 +271,9 @@ func (self *Descriptors) resolveExtensions(d *PodDescriptor, visited map[string]
 					s.Mounts[t] = v
 				}
 			}
+			if s.HealthCheck == nil {
+				s.HealthCheck = extServ.HealthCheck
+			}
 			s.Extends = nil
 		}
 	}
@@ -278,7 +296,6 @@ func validate(d *PodDescriptor) {
 		assertTrue(idRegexp.MatchString(k), "invalid service name", kPath)
 		assertTrue(len(v.Image) > 0 || v.Build != nil || v.Extends != nil, "empty", kPath+".{image|build|extends}")
 		assertTrue(v.Build == nil || len(v.Build.Context) > 0, "empty", kPath+".build.context")
-		assertTrue(v.Extends == nil || len(v.Extends.File) > 0, "empty", kPath+".extends.file")
 		assertTrue(v.Extends == nil || len(v.Extends.Service) > 0, "empty", kPath+".extends.service")
 	}
 	for k, v := range d.Volumes {
@@ -473,8 +490,34 @@ func toHealthCheckDescriptor(c *dcHealthCheckDescriptor, path string) *HealthChe
 	if c == nil {
 		return nil
 	} else {
-		return &HealthCheckDescriptor{toStringArray(c.Test, path), c.Interval, c.Timeout, c.Retries, c.Disable}
+		test := toStringArray(c.Test, path)
+		if len(test) == 0 {
+			panic(fmt.Sprintf("%s: undefined health test command", path+".test"))
+		}
+		var cmd []string
+		switch test[0] {
+		case "CMD":
+			cmd = test[1:]
+		case "CMD-SHELL":
+			cmd = append([]string{"/bin/sh", "-c"}, test[1:]...)
+		default:
+			cmd = append([]string{"/bin/sh", "-c"}, strings.Join(test, " "))
+		}
+		interval := toDuration(c.Interval, path+".interval")
+		timeout := toDuration(c.Timeout, path+".timeout")
+		return &HealthCheckDescriptor{cmd, "", interval, timeout, c.Retries, c.Disable}
 	}
+}
+
+func toDuration(v, path string) Duration {
+	if len(v) == 0 {
+		return 0
+	}
+	d, e := time.ParseDuration(v)
+	if e != nil {
+		panic(fmt.Sprintf("%s: %s", path, e))
+	}
+	return Duration(d)
 }
 
 func toStringArray(v interface{}, path string) []string {
@@ -565,7 +608,7 @@ type dcServiceDescriptorExtension struct {
 }
 
 type dcHealthCheckDescriptor struct {
-	Test     []interface{}
+	Test     interface{}
 	Interval string
 	Timeout  string
 	Retries  uint8

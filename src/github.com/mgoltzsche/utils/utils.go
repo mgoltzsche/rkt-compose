@@ -56,7 +56,6 @@ func ExecCommand(name string, args ...string) []byte {
 	cmd.Stderr = os.Stderr
 	out, e := cmd.Output()
 	if e != nil {
-		fmt.Println(string(out))
 		cmd := ""
 		if len(args) > 5 {
 			cmd = name + "\n  " + strings.Join(args, "\n  ")
