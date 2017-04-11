@@ -1,6 +1,8 @@
 package launcher
 
 import (
+	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"sync"
@@ -26,9 +28,9 @@ type HealthCheck struct {
 type HealthStatus string
 
 const (
-	HEALTH_UP   HealthStatus = "up"
-	HEALTH_WARN HealthStatus = "warn"
-	HEALTH_DOWN HealthStatus = "down"
+	STATUS_PASSING  HealthStatus = "passing"
+	STATUS_WARNING  HealthStatus = "warning"
+	STATUS_CRITICAL HealthStatus = "critical"
 )
 
 type HealthCheckResult struct {
@@ -39,7 +41,7 @@ type HealthCheckResult struct {
 
 type HealthIndicator func() (HealthStatus, string)
 
-type HealthReporter func(r *HealthCheckResult)
+type HealthReporter func(r *HealthCheckResult) error
 
 func NewHealthChecks(reporter HealthReporter, checks ...*HealthCheck) *HealthChecks {
 	c := &HealthChecks{}
@@ -66,16 +68,20 @@ func (c *HealthChecks) Stop() {
 	close(c.quit)   // Stop check goroutines
 	c.wait.Wait()   // Wait for check goroutines
 	close(c.status) // Stop stop reporter goroutine
-	c.quit = nil
 	c.status = nil
+	c.quit = nil
 	c.waitReporter.Wait() // Wait for reporter goroutine to terminate
 }
 
 func (c *HealthChecks) report(status <-chan *HealthCheckResult, quit <-chan bool) {
 	defer c.waitReporter.Done()
+	defer handleError("health reporter")
 	for {
 		if s, ok := <-status; ok {
-			c.reporter(s)
+			err := c.reporter(s)
+			if err != nil {
+				os.Stderr.WriteString(fmt.Sprintf("Error: health reporter: %s", err))
+			}
 		} else {
 			return
 		}
@@ -88,6 +94,7 @@ func NewHealthCheck(name string, interval, timeout time.Duration, indicator Heal
 
 func (c *HealthCheck) run(status chan<- *HealthCheckResult, quit <-chan bool, wait *sync.WaitGroup) {
 	defer wait.Done()
+	defer handleError("health check")
 	select { // Run for the 1st time after 5 seconds
 	case <-time.After(5 * time.Second):
 		c.check(status)
@@ -117,10 +124,16 @@ func CommandBasedHealthIndicator(args ...string) HealthIndicator {
 	return func() (HealthStatus, string) {
 		cmd := exec.Command(c, a...)
 		out, e := cmd.CombinedOutput()
-		status := HEALTH_DOWN
+		status := STATUS_CRITICAL
 		if e == nil {
-			status = HEALTH_UP
+			status = STATUS_PASSING
 		}
 		return status, strings.Trim(string(out), "\n")
+	}
+}
+
+func handleError(opName string) {
+	if e := recover(); e != nil {
+		os.Stderr.WriteString(fmt.Sprintf("error: %s terminated: %s\n", opName, e))
 	}
 }

@@ -6,39 +6,83 @@ import (
 	"github.com/mgoltzsche/launcher"
 	"github.com/mgoltzsche/model"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 )
 
+type RunOptions struct {
+	PodFile       string `param:"PODFILE"`
+	Name          string `opt:"name,Sets the pod's name"`
+	ConsulAddress string `opt:"consul-address,Specifies consul address to register the service"`
+}
+
+var runOpts RunOptions
+
 func main() {
-	defer func() {
-		if e := recover(); e != nil {
-			os.Stderr.WriteString(fmt.Sprintf("Error: %s\n", e))
-			os.Exit(1)
+	args := NewCmdArgs(nil)
+	args.AddCmd("run", "Runs a pod from the descriptor file. Both pod.json and docker-compose.yml descriptors are supported", &runOpts, runPod)
+	err := args.Run()
+	if err != nil {
+		os.Stderr.WriteString(fmt.Sprintf("Error: %s\n", err))
+		os.Exit(1)
+	}
+}
+
+func runPod() error {
+	defer launcher.MarkGarbageContainers()
+	descrFile, err := filepath.Abs(runOpts.PodFile)
+	if err != nil {
+		return err
+	}
+	models := model.NewDescriptors()
+	descr, err := models.Descriptor(descrFile)
+	if err != nil {
+		return err
+	}
+	err = models.Complete(descr, model.PULL_NEW)
+	if err != nil {
+		return err
+	}
+	if len(runOpts.Name) > 0 {
+		descr.Name = runOpts.Name
+	}
+	var listener launcher.LifecycleListenerFactory
+	//dumpModel(pod)
+	// TODO: configure consul optionally
+	// TODO: set health to critical on container stop
+	if len(runOpts.ConsulAddress) > 0 {
+		listener, err = launcher.NewConsulLifecycleFactory(runOpts.ConsulAddress)
+		if err != nil {
+			return err
+		}
+	}
+	l := launcher.NewPodLauncher(descr, listener)
+	handleSignals(l)
+	err = l.Start()
+	if err != nil {
+		return err
+	}
+	l.Wait()
+	return nil
+}
+
+func handleSignals(l *launcher.PodLauncher) {
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-sigs
+		err := l.Stop()
+		if err != nil {
+			os.Stderr.WriteString(fmt.Sprintf("Failed to stop: %s\n", err))
 		}
 	}()
-	descrFile, err := filepath.Abs(os.Args[1])
-	panicOnError(err)
-	models := model.NewDescriptors()
-	pod, err := models.Descriptor(descrFile)
-	panicOnError(err)
-	err = models.Complete(pod, model.PULL_NEW)
-	panicOnError(err)
-	if len(os.Args) > 1 {
-		pod.Name = os.Args[2]
-	}
-	dumpModel(pod)
-	err = launcher.Run(pod)
-	panicOnError(err)
 }
 
 func dumpModel(pod *model.PodDescriptor) {
 	j, err := json.MarshalIndent(pod, "", "  ")
-	panicOnError(err)
-	fmt.Println(string(j))
-}
-
-func panicOnError(e error) {
-	if e != nil {
-		panic(e)
+	if err != nil {
+		panic(err)
 	}
+	fmt.Println(string(j))
 }

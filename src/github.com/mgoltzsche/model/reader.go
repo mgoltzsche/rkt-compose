@@ -105,6 +105,11 @@ func (self *Descriptors) loadDescriptor(filePath string) (r *PodDescriptor) {
 				}
 			}
 		}
+		for _, v := range r.Volumes {
+			if len(v.Kind) == 0 {
+				v.Kind = "host"
+			}
+		}
 		validate(r)
 		self.descriptors[filePath] = r
 	}

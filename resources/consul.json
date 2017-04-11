@@ -1,0 +1,33 @@
+{
+	"dns": ["host"],
+	"services": {
+		"consul": {
+			"image": "docker://consul:0.8.0",
+			"entrypoint": [
+				"/usr/local/bin/docker-entrypoint.sh", "agent", "-server", "-ui",
+				"-bootstrap-expect", "1", "-log-level", "info",
+				"-bind", "0.0.0.0", "-advertise", "172.16.28.1", "-client", "0.0.0.0", "-recursor", "8.8.8.8"
+			],
+			"volumes": {
+				"/consul/config": "volume-consul-config"
+			},
+			"ports": {
+				"8300-tcp": "172.16.28.1:8300",
+				"8400-tcp": "172.16.28.1:8400",
+				"8500-tcp": "172.16.28.1:8500",
+				"8600-tcp": "172.16.28.1:53",
+				"8600-udp": "172.16.28.1:53",
+				"8300-tcp": "172.16.28.1:8300",
+				"8301-tcp": "172.16.28.1:8301",
+				"8302-tcp": "172.16.28.1:8302",
+				"8301-udp": "172.16.28.1:8301",
+				"8302-udp": "172.16.28.1:8302"
+			}
+		}
+	},
+	"volumes": {
+		"volume-consul-config": {
+			"source": "./volumes/volume-consul-config"
+		}
+	}
+}
