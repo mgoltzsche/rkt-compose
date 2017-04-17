@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/mgoltzsche/log"
 	"github.com/mgoltzsche/model"
 	"github.com/mgoltzsche/utils"
 	"os"
@@ -20,54 +21,70 @@ type LifecycleListenerFactory func(pod *model.PodDescriptor) LifecycleListener
 
 type LifecycleListener interface {
 	Start(podUUID, podIP string) error
-	Terminate()
+	Terminate() error
 }
 
 type NilListener struct{}
 
 func (l *NilListener) Start(podUUID, podIP string) error { return nil }
-func (l *NilListener) Terminate()                        {}
+func (l *NilListener) Terminate() error                  { return nil }
 
 type ConsulLifecycle struct {
-	descriptor *model.PodDescriptor
-	podUUID    string
-	client     *ConsulClient
-	checks     *HealthChecks
+	descriptor        *model.PodDescriptor
+	podUUID           string
+	client            *ConsulClient
+	checks            *HealthChecks
+	minReportInterval time.Duration
+	service           *Service
+	debug             log.Logger
 }
 
-func NewConsulLifecycleFactory(consulAddress string) (LifecycleListenerFactory, error) {
+func NewConsulLifecycleFactory(consulAddress string, checkTtl time.Duration, debug log.Logger) (LifecycleListenerFactory, error) {
 	client := NewConsulClient(consulAddress)
 	if !client.CheckAvailability(10) {
-		return nil, errors.New("consul unavailable")
+		return nil, errors.New("Consul unavailable")
 	}
 	return func(pod *model.PodDescriptor) LifecycleListener {
 		// Health checks done within the launcher to be able to run commands within the container
-		return &ConsulLifecycle{pod, "", client, nil}
+		tags := toTags(pod.Services)
+		minReportInterval := time.Duration(checkTtl / 2)
+		checkNote := fmt.Sprintf("aggregated checks (Interval: %s, TTL: %s)", minReportInterval.String(), checkTtl.String())
+		service := &Service{pod.Name, "", tags, false, HeartBeat{checkNote, checkTtl.String()}}
+		c := &ConsulLifecycle{pod, "", client, nil, minReportInterval, service, debug}
+		return c
 	}, nil
 }
 
-func (c *ConsulLifecycle) Start(podUUID, podIP string) error {
+func (c *ConsulLifecycle) Start(podUUID, podIP string) (err error) {
 	c.podUUID = podUUID
-	c.checks = toHealthChecks(c.descriptor, podUUID, c.reportHealth)
-	tags := toTags(c.descriptor.Services)
-	heartBeats := toHeartBeats(c.descriptor.Services)
-	if err := c.client.RegisterService(&Service{c.descriptor.Name, podIP, tags, false, heartBeats}); err != nil {
-		return err
+	c.checks, err = toHealthChecks(c.descriptor, podUUID, c.reportHealth, c.minReportInterval, c.debug)
+	if err != nil {
+		return
 	}
-	// TODO: create health checks before container start to raise  possible errors early
+	c.service.Address = podIP
+	c.debug.Printf("Setting IP of consul service %q to %s...", c.descriptor.Name, podIP)
+	err = c.client.RegisterService(c.service)
+	if err != nil {
+		return
+	}
+	// TODO: create health checks before container start to raise possible errors early
 	c.checks.Start()
 	return nil
 }
 
-func (c *ConsulLifecycle) Terminate() {
+func (c *ConsulLifecycle) Terminate() error {
 	c.checks.Stop()
+	c.debug.Printf("Deregistering service %q...", c.descriptor.Name)
 	if err := c.client.DeregisterService(c.descriptor.Name); err != nil {
-		os.Stderr.WriteString(fmt.Sprintf("Error: launcher: failed to deregister service %q", c.descriptor.Name))
+		return fmt.Errorf("Failed to deregister consul service %q", c.descriptor.Name)
 	}
+	return nil
 }
 
-func (c *ConsulLifecycle) reportHealth(r *HealthCheckResult) error {
-	return c.client.ReportHealth(r.Name, &Health{r.Status, r.Output})
+func (c *ConsulLifecycle) reportHealth(r *HealthCheckResults) error {
+	status := r.Status().String()
+	c.debug.Printf("Reporting status %s...", status)
+	return c.client.ReportHealth("service:"+c.descriptor.Name, &Health{ConsulHealthStatus(status), r.Output()})
 }
 
 type ContainerInfo struct {
@@ -94,71 +111,95 @@ type PodLauncher struct {
 	podUUID    string
 	cmd        *exec.Cmd
 	mutex      *sync.Mutex
+	once       *sync.Once
 	err        error
 	wait       sync.WaitGroup
+	debug      log.Logger
+	info       log.Logger
+	error      log.Logger
 }
 
 func (ctx *PodLauncher) Start() (err error) {
 	defer func() {
 		if e := recover(); e != nil {
 			if terr := ctx.terminate(); terr != nil {
-				os.Stderr.WriteString(fmt.Sprintf("Error: launcher: termination: %s\n", terr))
+				ctx.error.Println(terr)
 			}
-			err = errors.New(fmt.Sprintf("launcher: %s", e))
+			err = fmt.Errorf("launcher: %s", e)
 		}
 	}()
 	ctx.mutex.Lock()
 	defer ctx.mutex.Unlock()
 	if len(ctx.podUUID) > 0 {
-		panic("pod already running")
+		return errors.New("launcher: pod already running")
 	}
 	ctx.err = nil
-	prepareArgs := toRktPrepareArgs(ctx.descriptor).toSlice()
-	runArgs := toRktRunArgs(ctx.descriptor)
-	createVolumeDirectories(ctx.descriptor)
-	ctx.podUUID = utils.ToTrimmedString(utils.ExecCommand("rkt", prepareArgs...))
-	ctx.cmd = exec.Command("rkt", runArgs.add(ctx.podUUID).toSlice()...)
-	ctx.cmd.Stdout = os.Stdout
-	ctx.cmd.Stderr = os.Stderr
-	err = ctx.cmd.Start()
+	prepareArgs, err := toRktPrepareArgs(ctx.descriptor)
 	if err != nil {
-		panic(err)
+		return
 	}
+	runArgsBuilder := toRktRunArgs(ctx.descriptor)
+	ctx.createVolumeDirectories()
+	ctx.debug.Println("Preparing pod...")
+	out, err := utils.ExecCommand("rkt", prepareArgs...)
+	if err != nil {
+		return fmt.Errorf("Failed to prepare pod: %s", err)
+	}
+	ctx.podUUID = utils.ToTrimmedString(out)
+	runArgs := runArgsBuilder.add(ctx.podUUID).toSlice()
+	ctx.debug.Println("Starting pod...")
 	ctx.wait.Add(1)
-	go ctx.handleTermination()
-	info := ctx.containerInfo()
-	if err = ctx.listener.Start(ctx.podUUID, info.Networks[0].IP); err != nil {
-		panic(fmt.Sprintf("start listener: %s", err))
+	ctx.cmd = exec.Command("rkt", runArgs...)
+	go ctx.run()
+	info, err := ctx.containerInfo()
+	if err != nil {
+		ctx.terminate()
+		return fmt.Errorf("start status: %s", err)
 	}
+	if err = ctx.listener.Start(ctx.podUUID, info.Networks[0].IP); err != nil {
+		ctx.terminate()
+		return fmt.Errorf("start listener: %s", err)
+	}
+	ctx.once = &sync.Once{}
 	return nil
 }
 
 func (ctx *PodLauncher) Stop() (err error) {
+	ctx.debug.Println("Stopping pod...")
 	ctx.mutex.Lock()
 	defer ctx.mutex.Unlock()
-	if len(ctx.podUUID) == 0 {
-		ctx.wait.Wait()
-		return
-	}
-	ctx.listener.Terminate()
+	ctx.once.Do(ctx.invokeTerminationListener)
 	err = ctx.terminate()
 	ctx.podUUID = ""
 	ctx.cmd = nil
-	ctx.err = nil
 	ctx.wait.Wait()
 	if ctx.err != nil {
 		if err == nil {
 			err = ctx.err
 		} else {
-			err = errors.New(fmt.Sprintf("termination: %s\nrkt: %s", err, ctx.err))
+			err = fmt.Errorf("stop: %s. rkt: %s", err, ctx.err)
 		}
+		ctx.err = nil
 	}
 	return
 }
 
+func (ctx *PodLauncher) run() {
+	defer ctx.onPodTerminated()
+	ctx.cmd.Stdout = os.Stdout
+	ctx.cmd.Stderr = os.Stderr
+	ctx.err = ctx.cmd.Run()
+}
+
+func (ctx *PodLauncher) onPodTerminated() {
+	ctx.once.Do(ctx.invokeTerminationListener)
+	ctx.wait.Done()
+}
+
 func (ctx *PodLauncher) terminate() (err error) {
 	if ctx.cmd != nil && ctx.cmd.Process != nil {
-		err = ctx.cmd.Process.Signal(syscall.SIGTERM)
+		ctx.debug.Println("Terminating rkt process...")
+		err = ctx.cmd.Process.Signal(syscall.SIGINT)
 		if err == nil {
 			quit := make(chan bool, 1)
 			go func() {
@@ -167,54 +208,66 @@ func (ctx *PodLauncher) terminate() (err error) {
 			}()
 			select {
 			case <-time.After(time.Second * 10):
-				os.Stderr.WriteString("Killing pod since timeout exceeded\n")
+				ctx.error.Println("Killing pod since timeout exceeded")
 				err = ctx.cmd.Process.Kill()
 				if err != nil {
-					err = errors.New(fmt.Sprintf("Failed to kill rkt process: %s", err))
+					err = fmt.Errorf("Failed to kill rkt process: %s", err)
 				}
 				<-quit
 			case <-quit:
 			}
 			close(quit)
+		} else if ctx.cmd.ProcessState.Exited() {
+			err = nil
 		} else {
-			err = errors.New(fmt.Sprintf("Failed to send SIGTERM to rkt process: %s\n", err))
+			err = fmt.Errorf("Failed to terminate rkt process: %s", err)
 		}
 	}
 	return
+}
+
+func (ctx *PodLauncher) invokeTerminationListener() {
+	if err := ctx.listener.Terminate(); err != nil {
+		ctx.error.Println(err)
+	}
 }
 
 func (ctx *PodLauncher) Wait() {
 	ctx.wait.Wait()
 }
 
-func (ctx *PodLauncher) handleTermination() {
-	ctx.err = ctx.cmd.Wait()
-	ctx.wait.Done()
-}
-
-func (ctx *PodLauncher) containerInfo() (r *ContainerInfo) {
-	for i := 0; i < 4; i++ {
-		<-time.After(time.Millisecond * 500)
+func (ctx *PodLauncher) containerInfo() (r *ContainerInfo, err error) {
+	ctx.debug.Println("Awaiting pod start...")
+	for i := 0; i < 40; i++ { // Loop is workaround since initial command call may list no networks
 		r = &ContainerInfo{}
 		cmd := exec.Command("rkt", "status", "--format=json", "--wait-ready=5s", ctx.podUUID)
 		cmd.Stderr = os.Stderr
-		out, err := cmd.Output()
+		out, e := cmd.Output()
 		if err != nil {
-			panic(err)
+			err = e
+			return
 		}
 		err = json.Unmarshal(out, r)
 		if err != nil {
-			panic(err)
-		}
-		if len(r.Networks) > 0 {
 			return
 		}
+		if r.State == "running" && len(r.Networks) > 0 {
+			return
+		}
+		<-time.After(time.Millisecond * 50)
 	}
-	panic("pod has no network")
+	if r.State == "running" {
+		err = errors.New("Pod has no network")
+	} else {
+		err = errors.New("Pod did not start")
+	}
+	return
 }
 
-func NewPodLauncher(pod *model.PodDescriptor, listenerFactory LifecycleListenerFactory) *PodLauncher {
+func NewPodLauncher(pod *model.PodDescriptor, listenerFactory LifecycleListenerFactory, debug log.Logger, error log.Logger) *PodLauncher {
 	r := &PodLauncher{}
+	r.debug = debug
+	r.error = error
 	r.descriptor = pod
 	if listenerFactory == nil {
 		r.listener = &NilListener{}
@@ -222,16 +275,22 @@ func NewPodLauncher(pod *model.PodDescriptor, listenerFactory LifecycleListenerF
 		r.listener = listenerFactory(pod)
 	}
 	r.mutex = &sync.Mutex{}
+	r.once = &sync.Once{}
+	r.once.Do(func() {})
 	return r
 }
 
-func MarkGarbageContainers() error {
-	return exec.Command("rkt", "gc", "--mark-only").Run()
+func (ctx *PodLauncher) MarkGarbageContainersQuiet() {
+	ctx.debug.Println("Marking garbage collectable pods")
+	if err := exec.Command("rkt", "gc", "--mark-only").Run(); err != nil {
+		ctx.error.Println(err)
+	}
 }
 
-func createVolumeDirectories(pod *model.PodDescriptor) {
-	for _, vol := range pod.Volumes {
-		volFile := absFile(vol.Source, pod)
+func (ctx *PodLauncher) createVolumeDirectories() {
+	ctx.debug.Println("Creating volume directories...")
+	for _, vol := range ctx.descriptor.Volumes {
+		volFile := absFile(vol.Source, ctx.descriptor)
 		os.MkdirAll(volFile, 0770)
 	}
 }
@@ -259,7 +318,7 @@ func toRktRunArgs(pod *model.PodDescriptor) *args {
 	return r
 }
 
-func toRktPrepareArgs(pod *model.PodDescriptor) *args {
+func toRktPrepareArgs(pod *model.PodDescriptor) ([]string, error) {
 	r := newArgs("prepare", "--quiet=true")
 	if containsDockerImage(pod) {
 		r.add("--insecure-options=image")
@@ -271,7 +330,7 @@ func toRktPrepareArgs(pod *model.PodDescriptor) *args {
 		readOnly := strconv.AppendBool([]byte{}, v.Readonly)
 		r.add(fmt.Sprintf("--volume=%s,source=%s,kind=%s,readOnly=%s", k, absFile(v.Source, pod), v.Kind, readOnly))
 	}
-	// TODO: move ports to top level
+	// TODO: maybe move ports to top level
 	for _, s := range pod.Services {
 		for portName, p := range s.Ports {
 			portArg := "--port=" + portName
@@ -291,7 +350,7 @@ func toRktPrepareArgs(pod *model.PodDescriptor) *args {
 			r.add(fmt.Sprintf("--mount=volume=%s,target=%s", volName, target))
 		}
 		if len(s.Entrypoint) == 0 {
-			panic("undefined entrypoint: " + name)
+			return nil, fmt.Errorf("No entrypoint defined in service %q", name)
 		}
 		r.add("--exec=" + s.Entrypoint[0])
 		r.add("--")
@@ -299,34 +358,35 @@ func toRktPrepareArgs(pod *model.PodDescriptor) *args {
 		r.add(s.Command...)
 		r.add("---")
 	}
-	return r
+	return r.toSlice(), nil
 }
 
-func toHealthChecks(pod *model.PodDescriptor, podUUID string, reporter HealthReporter) *HealthChecks {
+func toHealthChecks(pod *model.PodDescriptor, podUUID string, reporter HealthReporter, minReportInterval time.Duration, debug log.Logger) (*HealthChecks, error) {
 	checks := []*HealthCheck{}
 	i := 1
 	for k, s := range pod.Services {
 		h := s.HealthCheck
 		if h != nil && len(h.Command) > 0 {
-			name := fmt.Sprintf("service:%s:%d", pod.Name, i)
-			indicator := toHealthIndicator(pod, k, podUUID, h)
-			check := NewHealthCheck(name, time.Duration(h.Interval), time.Duration(h.Timeout), indicator)
+			indicator, e := toHealthIndicator(pod, k, podUUID, h)
+			if e != nil {
+			}
+			check := NewHealthCheck(k, time.Duration(h.Interval), time.Duration(h.Timeout), indicator)
 			checks = append(checks, check)
 			i++
 		}
 	}
-	return NewHealthChecks(reporter, checks...)
+	return NewHealthChecks(debug, reporter, minReportInterval, checks...), nil
 }
 
-func toHealthIndicator(pod *model.PodDescriptor, app, podUUID string, h *model.HealthCheckDescriptor) HealthIndicator {
+func toHealthIndicator(pod *model.PodDescriptor, app, podUUID string, h *model.HealthCheckDescriptor) (HealthIndicator, error) {
 	switch {
 	case len(h.Command) > 0:
 		cmd := append([]string{"rkt", "enter", "--app=" + app, podUUID}, h.Command...)
-		return CommandBasedHealthIndicator(cmd...)
+		return CommandBasedHealthIndicator(cmd...), nil
 	case len(h.Http) > 0:
-		panic("HTTP health check unsupported")
+		return nil, errors.New("HTTP health check unsupported")
 	default:
-		panic("no health check indicator defined")
+		return nil, fmt.Errorf("no health check indicator defined for %q", app)
 	}
 }
 

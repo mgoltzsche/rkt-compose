@@ -49,7 +49,7 @@ func (a *CmdArgs) Run() error {
 			}
 			o := opt[arg]
 			if o == nil {
-				return errors.New(fmt.Sprintf("No option of command %s: %s", c.name, arg))
+				return fmt.Errorf("Unsupported option: %s", arg)
 			}
 			i++
 			o.value.SetString(os.Args[i])
@@ -57,15 +57,15 @@ func (a *CmdArgs) Run() error {
 			// Set command
 			c = a.commands[arg]
 			if c == nil {
-				return errors.New("Unknown command: " + arg)
+				return fmt.Errorf("Unsupported command: %q", arg)
 			}
 		} else {
 			// Set params
 			if c.param == nil {
-				return errors.New(fmt.Sprintf("%s command does not support parameters", c.name))
+				return fmt.Errorf("%s command does not support parameters", c.name)
 			}
 			if paramSet {
-				return errors.New(fmt.Sprintf("%s command does not support multiple %s parameters", c.name, c.param.description))
+				return fmt.Errorf("%s command does not support multiple %s parameters", c.name, c.param.description)
 			}
 			c.param.value.SetString(arg)
 			paramSet = true
@@ -75,7 +75,7 @@ func (a *CmdArgs) Run() error {
 		return errors.New("No command provided")
 	}
 	if c.param != nil && !paramSet {
-		return errors.New(fmt.Sprintf("No %s parameter provided to %s command", c.param.description, c.name))
+		return fmt.Errorf("No %s parameter provided to %s command", c.param.description, c.name)
 	}
 	return c.callback()
 }
@@ -103,14 +103,15 @@ func (a *CmdArgs) ShowHelp() {
 			h += fmt.Sprintf("    %-15s %s\n", k, v.description)
 		}
 	}
-	fmt.Printf(h)
+	fmt.Print(h)
 }
 
 func toParam(options interface{}) *option {
 	if options != nil {
 		t := reflect.ValueOf(options).Elem()
 		for i := 0; i < t.NumField(); i++ {
-			tag := t.Type().Field(i).Tag.Get("param")
+			f := t.Type().Field(i)
+			tag := f.Tag.Get("param")
 			if len(tag) > 0 {
 				return &option{tag, t.Field(i)}
 			}

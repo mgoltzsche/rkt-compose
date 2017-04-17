@@ -3,7 +3,6 @@ package launcher
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -15,7 +14,7 @@ type Service struct {
 	Address           string
 	Tags              []string
 	EnableTagOverride bool
-	Checks            []*HeartBeat
+	Check             HeartBeat
 }
 
 type HeartBeat struct {
@@ -23,8 +22,16 @@ type HeartBeat struct {
 	Ttl   string
 }
 
+type ConsulHealthStatus string
+
+const (
+	CONSUL_STATUS_PASSING  ConsulHealthStatus = "passing"
+	CONSUL_STATUS_WARNING  ConsulHealthStatus = "warning"
+	CONSUL_STATUS_CRITICAL ConsulHealthStatus = "critical"
+)
+
 type Health struct {
-	Status HealthStatus
+	Status ConsulHealthStatus
 	Output string
 }
 
@@ -99,5 +106,5 @@ func (c *ConsulClient) request(req *http.Request, err error) error {
 }
 
 func toError(f string, v ...interface{}) error {
-	return errors.New(fmt.Sprintf("consul: "+f+"\n", v...))
+	return fmt.Errorf("consul: "+f, v...)
 }

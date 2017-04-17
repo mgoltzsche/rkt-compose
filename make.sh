@@ -24,6 +24,6 @@ go install github.com/mgoltzsche/rkt-compose &&
 
 # Run
 #sudo bin/rkt-compose run --name consul resources/consul.json
-#sudo "$GOPATH/bin/rkt-compose" run --name testpod --consul-address http://172.16.28.1:8500 resources/example-docker-compose-images.yml
+sudo "$GOPATH/bin/rkt-compose" --debug true run --name testpod --consul-address http://172.16.28.1:8500 resources/example-docker-compose-images.yml
 
-sudo "$GOPATH/bin/rkt-compose" run --name testpod resources/example-docker-compose-images.yml
+#sudo "$GOPATH/bin/rkt-compose" --debug true run --name testpod resources/example-docker-compose-images.yml

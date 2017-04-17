@@ -2,11 +2,10 @@ package model
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"github.com/appc/docker2aci/lib"
 	"github.com/appc/docker2aci/lib/common"
-	"github.com/appc/docker2aci/pkg/log"
+	"github.com/mgoltzsche/log"
 	"github.com/mgoltzsche/utils"
 	"io/ioutil"
 	"os"
@@ -29,26 +28,27 @@ type Images struct {
 	filePath         string
 	images           map[string]*ImageMetadata
 	pullPolicy       PullPolicy
+	debug            log.Logger
 }
 
-func NewImages(d *PodDescriptor, pullPolicy PullPolicy) *Images {
-	return &Images{d.Name, d.File, map[string]*ImageMetadata{}, pullPolicy}
+func NewImages(d *PodDescriptor, pullPolicy PullPolicy, debug log.Logger) *Images {
+	return &Images{d.Name, d.File, map[string]*ImageMetadata{}, pullPolicy, debug}
 }
 
 func (self *Images) Image(s *ServiceDescriptor) (img *ImageMetadata, err error) {
-	defer func() {
-		if e := recover(); e != nil {
-			err = errors.New(fmt.Sprintf("loading: %s", e))
-		}
-	}()
-	imgName := self.toImageName(s)
+	imgName, err := self.toImageName(s)
+	if err != nil {
+		return
+	}
 	img = self.images[imgName]
 	if img == nil {
 		if s.Build == nil {
 			img, err = self.fetchImage(s.Image, self.pullPolicy)
-			utils.PanicOnError(err)
 		} else {
-			img = self.buildImage(imgName, s.Build)
+			img, err = self.buildImage(imgName, s.Build)
+		}
+		if err != nil {
+			return
 		}
 		self.images[imgName] = img
 	}
@@ -56,23 +56,25 @@ func (self *Images) Image(s *ServiceDescriptor) (img *ImageMetadata, err error) 
 }
 
 func (self *Images) fetchImage(name string, pullPolicy PullPolicy) (r *ImageMetadata, err error) {
-	defer func() {
-		if e := recover(); e != nil {
-			err = errors.New(fmt.Sprintf("%q: %s", name, e))
-		}
-	}()
 	r = &ImageMetadata{"", []string{}, "", map[string]string{}, map[string]*ImagePort{}, map[string]string{}}
-	fmt.Println("fetching " + name)
+	self.debug.Printf("Fetching image %q...", name)
 	insecOpt := ""
 	if strings.Index(name, "docker://") == 0 {
 		insecOpt = "image"
 	}
-	id := utils.ToTrimmedString(utils.ExecCommand("rkt", "fetch", "--pull-policy="+string(pullPolicy), "--insecure-options="+insecOpt, name))
-	out := utils.ExecCommand("rkt", "image", "cat-manifest", id)
+	out, err := utils.ExecCommand("rkt", "fetch", "--pull-policy="+string(pullPolicy), "--insecure-options="+insecOpt, name)
+	if err != nil {
+		return nil, fmt.Errorf("Cannot fetch image %q: %s", name, err)
+	}
+	id := utils.ToTrimmedString(out)
+	out, err = utils.ExecCommand("rkt", "image", "cat-manifest", id)
+	if err != nil {
+		return nil, fmt.Errorf("Cannot load image manifest %q: %s", name, err)
+	}
 	aci := aciImageMetadata{}
 	app := &aci.App
-	if e := json.Unmarshal(out, &aci); e != nil {
-		panic(e)
+	if err := json.Unmarshal(out, &aci); err != nil {
+		return nil, fmt.Errorf("Cannot unmarshal image manifest: %s", err)
 	}
 	r.Name = name
 	r.Exec = app.Exec
@@ -89,32 +91,32 @@ func (self *Images) fetchImage(name string, pullPolicy PullPolicy) (r *ImageMeta
 	return
 }
 
-func (self *Images) buildImage(imgName string, b *ServiceBuildDescriptor) *ImageMetadata {
-	img, err := self.fetchImage(imgName, PULL_NEVER)
+func (self *Images) buildImage(imgName string, b *ServiceBuildDescriptor) (img *ImageMetadata, err error) {
+	img, err = self.fetchImage(imgName, PULL_NEVER)
 	if err == nil {
-		return img
+		return
 	}
 	imgFile := filepath.FromSlash(self.toImageDescriptorFile(b))
-	fmt.Println("building docker image from " + imgFile)
+	self.debug.Printf("Building docker image from %q...", imgFile)
 	utils.ExecCommand("docker", "build", "-t", imgName, "--rm", filepath.Dir(imgFile))
-	importLocalDockerImage(imgName)
+	self.importLocalDockerImage(imgName)
 	img, err = self.fetchImage(imgName, PULL_NEVER)
 	if err != nil {
-		panic(err)
+		return
 	}
-	return img
+	return
 }
 
-func (self *Images) toImageName(s *ServiceDescriptor) string {
+func (self *Images) toImageName(s *ServiceDescriptor) (string, error) {
 	if len(s.Image) > 0 {
-		return s.Image
+		return s.Image, nil
 	} else {
 		df := self.toImageDescriptorFile(s.Build)
 		st, err := os.Stat(df)
 		if err != nil {
-			panic(fmt.Sprintf("%s: %s", df, err))
+			return "", fmt.Errorf("%s: %s", df, err)
 		}
-		return "local/" + utils.ToId(self.localImagePrefix+"-"+s.Build.Context) + ":" + st.ModTime().Format("20060102150405")
+		return "local/" + utils.ToId(self.localImagePrefix+"-"+s.Build.Context) + ":" + st.ModTime().Format("20060102150405"), nil
 	}
 }
 
@@ -126,22 +128,23 @@ func (self *Images) toImageDescriptorFile(b *ServiceBuildDescriptor) string {
 	return utils.AbsPath(path.Join(b.Context, df), self.filePath)
 }
 
-func importLocalDockerImage(imgName string) {
+func (self *Images) importLocalDockerImage(imgName string) error {
 	dockerImgFile, err := ioutil.TempFile("", "docker-image-")
 	if err != nil {
-		panic("cannot create temp file")
+		return fmt.Errorf("Cannot create temp file: %s", err)
 	}
 	defer removeFile(dockerImgFile.Name())
-	utils.ExecCommand("docker", "save", "--output", dockerImgFile.Name(), imgName)
-	d2aNopLogger := log.NewNopLogger()
+	if _, err = utils.ExecCommand("docker", "save", "--output", dockerImgFile.Name(), imgName); err != nil {
+		return fmt.Errorf("Cannot export docker image %q: %s", imgName, err)
+	}
 	d2aCfg := docker2aci.FileConfig{
 		CommonConfig: docker2aci.CommonConfig{
 			Squash:      true,
 			OutputDir:   os.TempDir(),
 			TmpDir:      os.TempDir(),
 			Compression: common.GzipCompression,
-			Debug:       d2aNopLogger,
-			Info:        d2aNopLogger,
+			Debug:       self.debug,
+			Info:        self.debug,
 		},
 		DockerURL: "",
 	}
@@ -149,12 +152,17 @@ func importLocalDockerImage(imgName string) {
 	aciFile := filepath.Join(os.TempDir(), utils.ToId(imgName)+".aci")
 	defer removeFile(aciFile)
 	if len(aciLayerPaths) < 1 {
-		panic(fmt.Sprintf("multiple ACI files returned by docker2aci: %s", err))
+		return fmt.Errorf("Multiple ACI files returned by docker2aci: %s", err)
 	}
-	cId := utils.ToTrimmedString(utils.ExecCommand("rkt", "prepare", "--quiet=true", "--insecure-options=image", aciLayerPaths[0]))
+	out, err := utils.ExecCommand("rkt", "prepare", "--quiet=true", "--insecure-options=image", aciLayerPaths[0])
+	if err != nil {
+		return fmt.Errorf("Cannot prepare pod: %s", err)
+	}
+	cId := utils.ToTrimmedString(out)
 	if e := exec.Command("rkt", "rm", cId).Run(); e != nil {
-		panic(fmt.Sprintf("cannot remove rkt container %q", cId))
+		return fmt.Errorf("Cannot remove rkt container %q", cId)
 	}
+	return nil
 }
 
 func removeFile(file string) {

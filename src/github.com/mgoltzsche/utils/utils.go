@@ -45,13 +45,7 @@ func AbsPath(p, basePath string) string {
 	}
 }
 
-func PanicOnError(e error) {
-	if e != nil {
-		panic(e)
-	}
-}
-
-func ExecCommand(name string, args ...string) []byte {
+func ExecCommand(name string, args ...string) ([]byte, error) {
 	cmd := exec.Command(name, args...)
 	cmd.Stderr = os.Stderr
 	out, e := cmd.Output()
@@ -62,9 +56,9 @@ func ExecCommand(name string, args ...string) []byte {
 		} else {
 			cmd = name + " " + strings.Join(args, " ")
 		}
-		panic(fmt.Sprintf("%s. cmd: %s", e, cmd))
+		return nil, fmt.Errorf("%s. cmd: %s", e, cmd)
 	}
-	return out
+	return out, nil
 }
 
 func ToTrimmedString(out []byte) string {

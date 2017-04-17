@@ -3,8 +3,8 @@ package model
 import (
 	"bufio"
 	"encoding/json"
-	"errors"
 	"fmt"
+	"github.com/mgoltzsche/log"
 	"github.com/mgoltzsche/utils"
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
@@ -18,19 +18,21 @@ import (
 )
 
 var idRegexp = regexp.MustCompile("^[a-z0-9\\-]+$")
+var defaultDuration = stdDuration()
 
 type Descriptors struct {
 	descriptors map[string]*PodDescriptor
+	debug       log.Logger
 }
 
-func NewDescriptors() *Descriptors {
-	return &Descriptors{map[string]*PodDescriptor{}}
+func NewDescriptors(debug log.Logger) *Descriptors {
+	return &Descriptors{map[string]*PodDescriptor{}, debug}
 }
 
 func (self *Descriptors) Descriptor(file string) (r *PodDescriptor, err error) {
 	defer func() {
 		if e := recover(); e != nil {
-			err = errors.New(fmt.Sprintf("model: %s", e))
+			err = fmt.Errorf("model: %s", e)
 		}
 	}()
 	file = path.Clean(filepath.ToSlash(file))
@@ -41,13 +43,13 @@ func (self *Descriptors) Descriptor(file string) (r *PodDescriptor, err error) {
 func (self *Descriptors) Complete(pod *PodDescriptor, pullPolicy PullPolicy) (err error) {
 	defer func() {
 		if e := recover(); e != nil {
-			err = errors.New(fmt.Sprintf("extend: %q: %s", pod.File, e))
+			err = fmt.Errorf("extend: %q: %s", pod.File, e)
 		}
 	}()
 	self.resolveExtensions(pod, map[string]bool{})
 	resolveEnvFiles(pod)
 	fileMountsToVolumes(pod)
-	addFetchedImages(pod, pullPolicy)
+	self.addFetchedImages(pod, pullPolicy)
 	addImageVolumes(pod)
 	for _, s := range pod.Services {
 		if len(s.Entrypoint) == 0 {
@@ -98,10 +100,10 @@ func (self *Descriptors) loadDescriptor(filePath string) (r *PodDescriptor) {
 			}
 			if v.HealthCheck != nil {
 				if v.HealthCheck.Interval == 0 {
-					v.HealthCheck.Interval = stdDuration()
+					v.HealthCheck.Interval = defaultDuration
 				}
 				if v.HealthCheck.Timeout == 0 {
-					v.HealthCheck.Timeout = stdDuration()
+					v.HealthCheck.Timeout = defaultDuration
 				}
 			}
 		}
@@ -116,9 +118,20 @@ func (self *Descriptors) loadDescriptor(filePath string) (r *PodDescriptor) {
 	return r
 }
 
+func (self *Descriptors) addFetchedImages(pod *PodDescriptor, pullPolicy PullPolicy) {
+	imgs := NewImages(pod, pullPolicy, self.debug)
+	for _, s := range pod.Services {
+		img, err := imgs.Image(s)
+		panicOnError(err)
+		s.FetchedImage = img
+	}
+}
+
 func stdDuration() Duration {
 	d, e := time.ParseDuration("10s")
-	panicOnError(e)
+	if e != nil {
+		panic(e)
+	}
 	return Duration(d)
 }
 
@@ -166,15 +179,6 @@ func fileMountsToVolumes(pod *PodDescriptor) {
 				}
 			}
 		}
-	}
-}
-
-func addFetchedImages(pod *PodDescriptor, pullPolicy PullPolicy) {
-	imgs := NewImages(pod, pullPolicy)
-	for _, s := range pod.Services {
-		img, err := imgs.Image(s)
-		panicOnError(err)
-		s.FetchedImage = img
 	}
 }
 
