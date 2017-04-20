@@ -1,0 +1,84 @@
+{
+  "version": 1,
+  "net": "default",
+  "dns": [
+    "host"
+  ],
+  "hostname": "owncloud.example.org",
+  "inject_hosts": true,
+  "services": {
+    "extbuild": {
+      "extends": {
+        "file": "./extended-service/extservice.yml",
+        "service": "extselfbuilt"
+      }
+    },
+    "extservice": {
+      "extends": {
+        "file": "./extended-service/extservice.yml",
+        "service": "extservice"
+      },
+      "env_file": [
+        "./additional.env"
+      ],
+      "environment": {
+        "MYVAR1": "val1",
+        "MYVAR2": "val2"
+      },
+      "ports": {
+        "25-tcp": "25",
+        "80-tcp": "80"
+      },
+      "mounts": {
+        "/data": "datavol",
+        "/etc/additional.cf": "./additional.cf"
+      }
+    },
+    "myservice": {
+      "image": "docker://owncloud:latest",
+      "entrypoint": [
+        "entrypoint.sh"
+      ],
+      "env_file": [
+        "./my.env"
+      ],
+      "environment": {
+        "MYVARA": "valA",
+        "MYVARB": "valB"
+      },
+      "ports": {
+        "3330-udp": "2220",
+        "3331-udp": "2221",
+        "5550-tcp": "3330",
+        "5551-tcp": "3331",
+        "5552-tcp": "3332",
+        "5553-tcp": "3333",
+        "5554-tcp": "3334",
+        "5555-tcp": "3335"
+      }
+    },
+    "selfbuilt1": {
+      "build": {
+        "context": "."
+      }
+    },
+    "selfbuilt2": {
+      "build": {
+        "context": ".",
+        "dockerfile": "Dockerfile-alternate",
+        "args": {
+          "buildno": "1",
+          "featureenabled": "true",
+          "myprop": "myvalue"
+        }
+      }
+    }
+  },
+  "volumes": {
+    "datavol": {
+      "source": "./volumes/datavol",
+      "kind": "host",
+      "readonly": false
+    }
+  }
+}

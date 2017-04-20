@@ -14,21 +14,28 @@ import (
 )
 
 type GlobalOptions struct {
-	Debug string `opt:"debug,Enables debug log"`
+	Verbose bool `opt:"verbose,false,Enables verbose logging"`
 }
 
 type RunOptions struct {
-	PodFile       string `param:"PODFILE"`
-	Name          string `opt:"name,Sets the pod's name"`
-	ConsulAddress string `opt:"consul-address,Specifies consul address to register the service"`
+	PodFile        string        `param:"PODFILE,"`
+	Name           string        `opt:"name,,Sets the pod's name"`
+	ConsulAddress  string        `opt:"consul-address,,Sets consul address to register the service"`
+	ConsulCheckTtl time.Duration `opt:"consul-check-ttl,60s,Sets consul check TTL"` // TODO: encode default values in tag
+}
+
+type DumpOptions struct {
+	PodFile string `param:"PODFILE,"`
 }
 
 var globOpts GlobalOptions
 var runOpts RunOptions
+var dumpOpts DumpOptions
 
 func main() {
 	args := NewCmdArgs(&globOpts)
 	args.AddCmd("run", "Runs a pod from the descriptor file. Both pod.json and docker-compose.yml descriptors are supported", &runOpts, runPod)
+	args.AddCmd("dump", "Loads a pod model and dumps it as JSON", &dumpOpts, dumpPod)
 	err := args.Run()
 	if err != nil {
 		os.Stderr.WriteString(fmt.Sprintf("%s\n", err))
@@ -36,12 +43,19 @@ func main() {
 	}
 }
 
-func runPod() error {
-	errorLog := log.NewStdLogger(os.Stderr)
-	debugLog := log.NewNopLogger()
-	if globOpts.Debug == "true" {
+var errorLog log.Logger
+var debugLog log.Logger
+
+func initLogs() {
+	errorLog = log.NewStdLogger(os.Stderr)
+	debugLog = log.NewNopLogger()
+	if globOpts.Verbose {
 		debugLog = log.NewStdLogger(os.Stderr)
 	}
+}
+
+func runPod() error {
+	initLogs()
 	descrFile, err := filepath.Abs(runOpts.PodFile)
 	if err != nil {
 		return err
@@ -63,11 +77,7 @@ func runPod() error {
 	// TODO: configure consul optionally
 	// TODO: set health to critical on container stop
 	if len(runOpts.ConsulAddress) > 0 {
-		checkTtl, e := time.ParseDuration("60s")
-		if e != nil {
-			panic(e)
-		}
-		listener, err = launcher.NewConsulLifecycleFactory(runOpts.ConsulAddress, checkTtl, debugLog)
+		listener, err = launcher.NewConsulLifecycleFactory(runOpts.ConsulAddress, runOpts.ConsulCheckTtl, debugLog)
 		if err != nil {
 			return err
 		}
@@ -93,6 +103,21 @@ func handleSignals(l *launcher.PodLauncher) {
 			os.Stderr.WriteString(fmt.Sprintf("Failed to stop: %s\n", err))
 		}
 	}()
+}
+
+func dumpPod() error {
+	initLogs()
+	descrFile, err := filepath.Abs(filepath.FromSlash(dumpOpts.PodFile))
+	if err != nil {
+		return err
+	}
+	models := model.NewDescriptors(debugLog)
+	descr, err := models.Descriptor(descrFile)
+	if err != nil {
+		return err
+	}
+	fmt.Println(descr.JSON())
+	return err
 }
 
 func dumpModel(pod *model.PodDescriptor) {

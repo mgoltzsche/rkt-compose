@@ -1,6 +1,10 @@
 package model
 
-import "time"
+import (
+	"encoding/json"
+	"fmt"
+	"time"
+)
 
 func NewPodDescriptor() *PodDescriptor {
 	r := &PodDescriptor{}
@@ -91,4 +95,12 @@ func (d Duration) UnmarshalJSON(str []byte) error {
 func ParseDuration(str string) (Duration, error) {
 	d, e := time.ParseDuration(str)
 	return Duration(d), e
+}
+
+func (d *PodDescriptor) JSON() string {
+	j, e := json.MarshalIndent(d, "", "  ")
+	if e != nil {
+		panic(fmt.Sprintf("Failed to marshal pod model: %s", e))
+	}
+	return string(j)
 }
