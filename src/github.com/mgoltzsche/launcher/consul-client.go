@@ -41,12 +41,15 @@ type ConsulClient struct {
 }
 
 func NewConsulClient(address string) *ConsulClient {
-	return &ConsulClient{address, &http.Client{Transport: &http.Transport{
-		MaxIdleConns:        10,
-		IdleConnTimeout:     60 * time.Second,
-		DisableCompression:  true,
-		TLSHandshakeTimeout: 5 * time.Second,
-	}}}
+	return &ConsulClient{address, &http.Client{
+		Timeout: time.Duration(5 * time.Second),
+		Transport: &http.Transport{
+			MaxIdleConns:        10,
+			IdleConnTimeout:     60 * time.Second,
+			DisableCompression:  true,
+			TLSHandshakeTimeout: 5 * time.Second,
+		},
+	}}
 }
 
 func (c *ConsulClient) CheckAvailability(maxRetries uint) bool {
@@ -58,7 +61,7 @@ func (c *ConsulClient) CheckAvailability(maxRetries uint) bool {
 			return true
 		}
 		if i == 0 {
-			os.Stderr.WriteString(fmt.Sprintf("Consul at %s unavailable. Retrying %d seconds...\n", c.address, maxRetries))
+			os.Stderr.WriteString(fmt.Sprintf("Consul at %s unavailable. Retrying %d times...\n", c.address, maxRetries))
 		}
 		<-time.After(time.Second)
 	}

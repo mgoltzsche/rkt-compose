@@ -1,12 +1,14 @@
-package launcher
+package checks
 
 import (
 	"fmt"
 	"github.com/mgoltzsche/log"
+	"io/ioutil"
 	"os"
 	"os/exec"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -27,7 +29,6 @@ type HealthChecks struct {
 type HealthCheck struct {
 	name     string
 	interval time.Duration
-	timeout  time.Duration
 	test     HealthIndicator
 }
 
@@ -65,7 +66,11 @@ type HealthCheckResult struct {
 	output string
 }
 
-type HealthIndicator func() (HealthStatus, string)
+func NewHealthCheckResult(status HealthStatus, output string) *HealthCheckResult {
+	return &HealthCheckResult{0, "", status, output}
+}
+
+type HealthIndicator func() *HealthCheckResult
 
 type HealthReporter func(r *HealthCheckResults) error
 
@@ -135,15 +140,14 @@ func (c *HealthChecks) report(status <-chan *HealthCheckResult, quit <-chan bool
 	for {
 		select {
 		case s, ok := <-status:
-			if ok {
-				c.debug.Printf("Check %q %s", s.name, s.status)
-				if c.updateStatus(s) {
-					resetTicker()
-					c.doReportStatus()
-				}
-			} else {
+			if !ok {
 				ticker.Stop()
 				return
+			}
+			c.debug.Printf("Check %q %s", s.name, s.status)
+			if c.updateStatus(s) {
+				resetTicker()
+				c.doReportStatus()
 			}
 		case <-ticker.C:
 			c.doReportStatus()
@@ -184,24 +188,30 @@ func (c *HealthChecks) updateStatus(r *HealthCheckResult) (changed bool) {
 func (c *HealthChecks) combinedOutput() string {
 	msg := make([]string, len(c.checkResults))
 	for i, r := range c.checkResults {
-		msg[i] = fmt.Sprintf("%s %s - %s", r.name, r.status, strings.Replace(r.output, "\n", "\n  ", -1))
+		if len(r.output) > 0 {
+			msg[i] = fmt.Sprintf("%s %s - %s", r.name, r.status, strings.Replace(r.output, "\n", "\n  ", -1))
+		} else {
+			msg[i] = fmt.Sprintf("%s %s", r.name, r.status)
+		}
 	}
 	return strings.Join(msg, "\n")
 }
 
-func NewHealthCheck(name string, interval, timeout time.Duration, indicator HealthIndicator) *HealthCheck {
-	return &HealthCheck{name, interval, timeout, indicator}
+func NewHealthCheck(name string, interval time.Duration, indicator HealthIndicator) *HealthCheck {
+	return &HealthCheck{name, interval, indicator}
 }
 
 func (c *HealthCheck) run(index uint, status chan<- *HealthCheckResult, quit <-chan bool, wait *sync.WaitGroup, debug log.Logger) {
 	defer wait.Done()
 	defer func() { status <- &HealthCheckResult{index, c.name, STATUS_CRITICAL, "check terminated"} }()
-	for i := 0; i < 30; i++ {
+	for i := 0; i < 10; i++ {
 		select {
 		case <-time.After(time.Second):
-			r, out := c.test()
-			if r != STATUS_CRITICAL {
-				status <- &HealthCheckResult{index, c.name, r, out}
+			r := c.test()
+			r.index = index
+			r.name = c.name
+			status <- r
+			if r.status != STATUS_CRITICAL {
 				i = 30
 			}
 		case <-quit:
@@ -212,8 +222,10 @@ func (c *HealthCheck) run(index uint, status chan<- *HealthCheckResult, quit <-c
 	for {
 		select {
 		case <-ticker.C:
-			r, out := c.test()
-			status <- &HealthCheckResult{index, c.name, r, out}
+			r := c.test()
+			r.index = index
+			r.name = c.name
+			status <- r
 		case <-quit:
 			ticker.Stop()
 			return
@@ -221,16 +233,44 @@ func (c *HealthCheck) run(index uint, status chan<- *HealthCheckResult, quit <-c
 	}
 }
 
-func CommandBasedHealthIndicator(args ...string) HealthIndicator {
+func NewCommandBasedHealthIndicator(debug log.Logger, timeout time.Duration, args ...string) HealthIndicator {
 	c := args[0]
 	a := args[1:]
-	return func() (HealthStatus, string) {
+	return func() *HealthCheckResult {
 		cmd := exec.Command(c, a...)
-		out, e := cmd.CombinedOutput()
-		status := STATUS_CRITICAL
-		if e == nil {
-			status = STATUS_PASSING
+		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+		stderr, err := cmd.StderrPipe()
+		if err != nil {
+			return NewHealthCheckResult(STATUS_CRITICAL, "Cannot create health check indicator stderr pipe: "+err.Error())
 		}
-		return status, strings.Trim(string(out), "\n")
+		err = cmd.Start()
+		if err != nil {
+			return NewHealthCheckResult(STATUS_CRITICAL, "Cannot start health check indicator cmd: "+err.Error())
+		}
+		done := make(chan *HealthCheckResult, 1)
+		go func() {
+			outb, _ := ioutil.ReadAll(stderr)
+			out := strings.Trim(string(outb), "\n")
+			err := cmd.Wait()
+			status := STATUS_CRITICAL
+			if err == nil {
+				status = STATUS_PASSING
+			} else if len(out) == 0 {
+				out = fmt.Sprintf("%s", err)
+			}
+			done <- NewHealthCheckResult(status, out)
+		}()
+		select {
+		case r := <-done:
+			close(done)
+			return r
+		case <-time.After(timeout):
+			stderr.Close()
+			cmd.Process.Signal(syscall.SIGINT)
+			cmd.Process.Kill()
+			r := <-done
+			close(done)
+			return NewHealthCheckResult(STATUS_CRITICAL, "Indicator timed out - "+r.output)
+		}
 	}
 }

@@ -29,64 +29,6 @@ type NilListener struct{}
 func (l *NilListener) Start(podUUID, podIP string) error { return nil }
 func (l *NilListener) Terminate() error                  { return nil }
 
-type ConsulLifecycle struct {
-	descriptor        *model.PodDescriptor
-	podUUID           string
-	client            *ConsulClient
-	checks            *HealthChecks
-	minReportInterval time.Duration
-	service           *Service
-	debug             log.Logger
-}
-
-func NewConsulLifecycleFactory(consulAddress string, checkTtl time.Duration, debug log.Logger) (LifecycleListenerFactory, error) {
-	client := NewConsulClient(consulAddress)
-	if !client.CheckAvailability(10) {
-		return nil, errors.New("Consul unavailable")
-	}
-	return func(pod *model.PodDescriptor) LifecycleListener {
-		// Health checks done within the launcher to be able to run commands within the container
-		tags := toTags(pod.Services)
-		minReportInterval := time.Duration(checkTtl / 2)
-		checkNote := fmt.Sprintf("aggregated checks (Interval: %s, TTL: %s)", minReportInterval.String(), checkTtl.String())
-		service := &Service{pod.Name, "", tags, false, HeartBeat{checkNote, checkTtl.String()}}
-		c := &ConsulLifecycle{pod, "", client, nil, minReportInterval, service, debug}
-		return c
-	}, nil
-}
-
-func (c *ConsulLifecycle) Start(podUUID, podIP string) (err error) {
-	c.podUUID = podUUID
-	c.checks, err = toHealthChecks(c.descriptor, podUUID, c.reportHealth, c.minReportInterval, c.debug)
-	if err != nil {
-		return
-	}
-	c.service.Address = podIP
-	c.debug.Printf("Setting IP of consul service %q to %s...", c.descriptor.Name, podIP)
-	err = c.client.RegisterService(c.service)
-	if err != nil {
-		return
-	}
-	// TODO: create health checks before container start to raise possible errors early
-	c.checks.Start()
-	return nil
-}
-
-func (c *ConsulLifecycle) Terminate() error {
-	c.checks.Stop()
-	c.debug.Printf("Deregistering service %q...", c.descriptor.Name)
-	if err := c.client.DeregisterService(c.descriptor.Name); err != nil {
-		return fmt.Errorf("Failed to deregister consul service %q", c.descriptor.Name)
-	}
-	return nil
-}
-
-func (c *ConsulLifecycle) reportHealth(r *HealthCheckResults) error {
-	status := r.Status().String()
-	c.debug.Printf("Reporting status %s...", status)
-	return c.client.ReportHealth("service:"+c.descriptor.Name, &Health{ConsulHealthStatus(status), r.Output()})
-}
-
 type ContainerInfo struct {
 	Name      string              `json:"name"`
 	State     string              `json:"state"`
@@ -117,6 +59,22 @@ type PodLauncher struct {
 	debug      log.Logger
 	info       log.Logger
 	error      log.Logger
+}
+
+func NewPodLauncher(pod *model.PodDescriptor, listenerFactory LifecycleListenerFactory, debug log.Logger, error log.Logger) *PodLauncher {
+	r := &PodLauncher{}
+	r.debug = debug
+	r.error = error
+	r.descriptor = pod
+	if listenerFactory == nil {
+		r.listener = &NilListener{}
+	} else {
+		r.listener = listenerFactory(pod)
+	}
+	r.mutex = &sync.Mutex{}
+	r.once = &sync.Once{}
+	r.once.Do(func() {})
+	return r
 }
 
 func (ctx *PodLauncher) Start() (err error) {
@@ -264,22 +222,6 @@ func (ctx *PodLauncher) containerInfo() (r *ContainerInfo, err error) {
 	return
 }
 
-func NewPodLauncher(pod *model.PodDescriptor, listenerFactory LifecycleListenerFactory, debug log.Logger, error log.Logger) *PodLauncher {
-	r := &PodLauncher{}
-	r.debug = debug
-	r.error = error
-	r.descriptor = pod
-	if listenerFactory == nil {
-		r.listener = &NilListener{}
-	} else {
-		r.listener = listenerFactory(pod)
-	}
-	r.mutex = &sync.Mutex{}
-	r.once = &sync.Once{}
-	r.once.Do(func() {})
-	return r
-}
-
 func (ctx *PodLauncher) MarkGarbageContainersQuiet() {
 	ctx.debug.Println("Marking garbage collectable pods")
 	if err := exec.Command("rkt", "gc", "--mark-only").Run(); err != nil {
@@ -359,56 +301,6 @@ func toRktPrepareArgs(pod *model.PodDescriptor) ([]string, error) {
 		r.add("---")
 	}
 	return r.toSlice(), nil
-}
-
-func toHealthChecks(pod *model.PodDescriptor, podUUID string, reporter HealthReporter, minReportInterval time.Duration, debug log.Logger) (*HealthChecks, error) {
-	checks := []*HealthCheck{}
-	i := 1
-	for k, s := range pod.Services {
-		h := s.HealthCheck
-		if h != nil && len(h.Command) > 0 {
-			indicator, e := toHealthIndicator(pod, k, podUUID, h)
-			if e != nil {
-			}
-			check := NewHealthCheck(k, time.Duration(h.Interval), time.Duration(h.Timeout), indicator)
-			checks = append(checks, check)
-			i++
-		}
-	}
-	return NewHealthChecks(debug, reporter, minReportInterval, checks...), nil
-}
-
-func toHealthIndicator(pod *model.PodDescriptor, app, podUUID string, h *model.HealthCheckDescriptor) (HealthIndicator, error) {
-	switch {
-	case len(h.Command) > 0:
-		cmd := append([]string{"rkt", "enter", "--app=" + app, podUUID}, h.Command...)
-		return CommandBasedHealthIndicator(cmd...), nil
-	case len(h.Http) > 0:
-		return nil, errors.New("HTTP health check unsupported")
-	default:
-		return nil, fmt.Errorf("no health check indicator defined for %q", app)
-	}
-}
-
-func toHeartBeats(m map[string]*model.ServiceDescriptor) []*HeartBeat {
-	r := make([]*HeartBeat, 0, len(m))
-	for k, s := range m {
-		h := s.HealthCheck
-		if h != nil {
-			r = append(r, &HeartBeat{k + " check", (time.Duration(h.Interval) * 2).String()})
-		}
-	}
-	return r
-}
-
-func toTags(m map[string]*model.ServiceDescriptor) []string {
-	t := make([]string, len(m))
-	i := 0
-	for k := range m {
-		t[i] = k
-		i++
-	}
-	return t
 }
 
 func absFile(path string, pod *model.PodDescriptor) string {

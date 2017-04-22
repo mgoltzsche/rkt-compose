@@ -2,7 +2,7 @@ version: '2'
 services:
   myservice:
     image: alpine:latest
-    entrypoint: ["/bin/sh", "-c", "echo hello from fetched container; sleep 20; echo terminating"]
+    entrypoint: ["/bin/sh", "-c", "echo hello from fetched container; sleep 60; echo terminating"]
     env_file:
       - ./example.env
     volumes:

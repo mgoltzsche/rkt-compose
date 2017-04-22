@@ -18,7 +18,6 @@ import (
 )
 
 var idRegexp = regexp.MustCompile("^[a-z0-9\\-]+$")
-var defaultDuration = stdDuration()
 
 type Descriptors struct {
 	descriptors map[string]*PodDescriptor
@@ -100,10 +99,10 @@ func (self *Descriptors) loadDescriptor(filePath string) (r *PodDescriptor) {
 			}
 			if v.HealthCheck != nil {
 				if v.HealthCheck.Interval == 0 {
-					v.HealthCheck.Interval = defaultDuration
+					v.HealthCheck.Interval = Duration(10 * time.Second)
 				}
 				if v.HealthCheck.Timeout == 0 {
-					v.HealthCheck.Timeout = defaultDuration
+					v.HealthCheck.Timeout = v.HealthCheck.Interval
 				}
 			}
 		}
@@ -125,14 +124,6 @@ func (self *Descriptors) addFetchedImages(pod *PodDescriptor, pullPolicy PullPol
 		panicOnError(err)
 		s.FetchedImage = img
 	}
-}
-
-func stdDuration() Duration {
-	d, e := time.ParseDuration("10s")
-	if e != nil {
-		panic(e)
-	}
-	return Duration(d)
 }
 
 func resolveEnvFiles(d *PodDescriptor) {
