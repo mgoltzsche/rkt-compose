@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"reflect"
@@ -97,7 +96,7 @@ func (a *CmdArgs) Run() error {
 		}
 	}
 	if c == nil {
-		return errors.New("No command provided")
+		return fmt.Errorf("No command provided. Use `%s help` to list available commands", os.Args[0])
 	}
 	if c.param != nil && len(c.param.defaultValue) == 0 && !paramSet {
 		return fmt.Errorf("No %s parameter provided to %s command", c.param.description, c.name)

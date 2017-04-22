@@ -21,7 +21,7 @@ type ConsulLifecycle struct {
 
 func NewConsulLifecycleFactory(consulAddress string, checkTtl time.Duration, debug log.Logger) (LifecycleListenerFactory, error) {
 	client := NewConsulClient(consulAddress)
-	if !client.CheckAvailability(10) {
+	if !client.CheckAvailability(30) {
 		return nil, errors.New("Consul unavailable")
 	}
 	return func(pod *model.PodDescriptor) LifecycleListener {

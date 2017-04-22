@@ -34,6 +34,11 @@ func (self *Descriptors) Descriptor(file string) (r *PodDescriptor, err error) {
 			err = fmt.Errorf("model: %s", e)
 		}
 	}()
+	file, err = filepath.Abs(file)
+	if err != nil {
+		err = fmt.Errorf("Invalid descriptor file path: %s", err)
+		return
+	}
 	file = path.Clean(filepath.ToSlash(file))
 	r = self.loadDescriptor(file)
 	return

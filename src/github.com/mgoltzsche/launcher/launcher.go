@@ -7,6 +7,7 @@ import (
 	"github.com/mgoltzsche/log"
 	"github.com/mgoltzsche/model"
 	"github.com/mgoltzsche/utils"
+	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -48,24 +49,32 @@ type ContainerNetwork struct {
 }
 
 type PodLauncher struct {
-	descriptor *model.PodDescriptor
-	listener   LifecycleListener
-	podUUID    string
-	cmd        *exec.Cmd
-	mutex      *sync.Mutex
-	once       *sync.Once
-	err        error
-	wait       sync.WaitGroup
-	debug      log.Logger
-	info       log.Logger
-	error      log.Logger
+	descriptor  *model.PodDescriptor
+	listener    LifecycleListener
+	podUUID     string
+	podUUIDFile string
+	cmd         *exec.Cmd
+	mutex       *sync.Mutex
+	once        *sync.Once
+	err         error
+	wait        sync.WaitGroup
+	debug       log.Logger
+	info        log.Logger
+	error       log.Logger
 }
 
-func NewPodLauncher(pod *model.PodDescriptor, listenerFactory LifecycleListenerFactory, debug log.Logger, error log.Logger) *PodLauncher {
+func NewPodLauncher(pod *model.PodDescriptor, uuidFile string, listenerFactory LifecycleListenerFactory, debug log.Logger, error log.Logger) (*PodLauncher, error) {
 	r := &PodLauncher{}
 	r.debug = debug
 	r.error = error
 	r.descriptor = pod
+	if uuidFile != "" {
+		uuidFile, err := filepath.Abs(uuidFile)
+		if err != nil {
+			return nil, fmt.Errorf("Invalid pod UUID file: %s", err)
+		}
+		r.podUUIDFile = uuidFile
+	}
 	if listenerFactory == nil {
 		r.listener = &NilListener{}
 	} else {
@@ -74,7 +83,7 @@ func NewPodLauncher(pod *model.PodDescriptor, listenerFactory LifecycleListenerF
 	r.mutex = &sync.Mutex{}
 	r.once = &sync.Once{}
 	r.once.Do(func() {})
-	return r
+	return r, nil
 }
 
 func (ctx *PodLauncher) Start() (err error) {
@@ -98,12 +107,16 @@ func (ctx *PodLauncher) Start() (err error) {
 	}
 	runArgsBuilder := toRktRunArgs(ctx.descriptor)
 	ctx.createVolumeDirectories()
+	ctx.removeLastPod()
 	ctx.debug.Println("Preparing pod...")
 	out, err := utils.ExecCommand("rkt", prepareArgs...)
 	if err != nil {
 		return fmt.Errorf("Failed to prepare pod: %s", err)
 	}
 	ctx.podUUID = utils.ToTrimmedString(out)
+	if err := ctx.writeUuidFile(); err != nil {
+		return err
+	}
 	runArgs := runArgsBuilder.add(ctx.podUUID).toSlice()
 	ctx.debug.Println("Starting pod...")
 	ctx.wait.Add(1)
@@ -195,31 +208,49 @@ func (ctx *PodLauncher) Wait() {
 }
 
 func (ctx *PodLauncher) containerInfo() (r *ContainerInfo, err error) {
-	ctx.debug.Println("Awaiting pod start...")
+	interval := time.Millisecond * 50
 	for i := 0; i < 40; i++ { // Loop is workaround since initial command call may list no networks
 		r = &ContainerInfo{}
 		cmd := exec.Command("rkt", "status", "--format=json", "--wait-ready=5s", ctx.podUUID)
 		cmd.Stderr = os.Stderr
 		out, e := cmd.Output()
 		if err != nil {
-			err = e
+			err = fmt.Errorf("Failed to request rkt pod status: %s", e)
 			return
 		}
 		err = json.Unmarshal(out, r)
 		if err != nil {
+			err = fmt.Errorf("Failed to unmarshal rkt status. %s. Output: %s", err, string(out))
 			return
 		}
 		if r.State == "running" && len(r.Networks) > 0 {
 			return
 		}
-		<-time.After(time.Millisecond * 50)
+		<-time.After(interval)
 	}
 	if r.State == "running" {
 		err = errors.New("Pod has no network")
 	} else {
-		err = errors.New("Pod did not start")
+		err = fmt.Errorf("Pod start timed out after %s", time.Duration(interval*40))
 	}
 	return
+}
+
+func (ctx *PodLauncher) writeUuidFile() error {
+	if ctx.podUUIDFile != "" {
+		return ioutil.WriteFile(ctx.podUUIDFile, []byte(ctx.podUUID), 0644)
+	}
+	return nil
+}
+
+func (ctx *PodLauncher) removeLastPod() {
+	if ctx.podUUIDFile != "" {
+		ctx.debug.Println("Removing last pod...")
+		err := exec.Command("rkt", "rm", "--uuid-file="+ctx.podUUIDFile).Run()
+		if err != nil {
+			ctx.debug.Printf("Warn: Could not remove last pod: %s", err)
+		}
+	}
 }
 
 func (ctx *PodLauncher) MarkGarbageContainersQuiet() {

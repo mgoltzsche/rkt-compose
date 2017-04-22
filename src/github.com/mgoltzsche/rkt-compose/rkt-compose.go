@@ -19,6 +19,7 @@ type GlobalOptions struct {
 
 type RunOptions struct {
 	PodFile        string        `param:"PODFILE,"`
+	UuidFile       string        `opt:"uuid-file,,File to save pod UUID to. If provided last container will be removed on container start"`
 	Name           string        `opt:"name,,Sets the pod's name"`
 	ConsulAddress  string        `opt:"consul-address,,Sets consul address to register the service"`
 	ConsulCheckTtl time.Duration `opt:"consul-check-ttl,60s,Sets consul check TTL"` // TODO: encode default values in tag
@@ -56,12 +57,8 @@ func initLogs() {
 
 func runPod() error {
 	initLogs()
-	descrFile, err := filepath.Abs(runOpts.PodFile)
-	if err != nil {
-		return err
-	}
 	models := model.NewDescriptors(debugLog)
-	descr, err := models.Descriptor(descrFile)
+	descr, err := models.Descriptor(runOpts.PodFile)
 	if err != nil {
 		return err
 	}
@@ -82,7 +79,10 @@ func runPod() error {
 			return err
 		}
 	}
-	l := launcher.NewPodLauncher(descr, listener, debugLog, errorLog)
+	l, err := launcher.NewPodLauncher(descr, runOpts.UuidFile, listener, debugLog, errorLog)
+	if err != nil {
+		return err
+	}
 	handleSignals(l)
 	defer l.MarkGarbageContainersQuiet()
 	err = l.Start()

@@ -56,7 +56,6 @@ func (c *ConsulClient) CheckAvailability(maxRetries uint) bool {
 	var err error
 	for i := uint(0); i <= maxRetries; i++ {
 		err = c.request(http.NewRequest("GET", fmt.Sprintf("%s/v1/kv/?keys", c.address), nil))
-		//_, err = c.client.Get(c.address + "/v1/kv/?keys")
 		if err == nil {
 			return true
 		}
