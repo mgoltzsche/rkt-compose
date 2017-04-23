@@ -168,7 +168,6 @@ func (c *HealthChecks) updateStatus(r *HealthCheckResult) (changed bool) {
 	if last.status != r.status {
 		c.statusCounts[last.status]--
 		c.statusCounts[r.status]++
-		changed = true
 	}
 	status := c.currentStatus.status
 	for i := byte(2); i >= 0; i-- {
@@ -265,7 +264,7 @@ func NewCommandBasedHealthIndicator(debug log.Logger, timeout time.Duration, arg
 			close(done)
 			return r
 		case <-time.After(timeout):
-			stderr.Close()
+			stderr.Close() // If not closed here process doesn't get killed
 			cmd.Process.Signal(syscall.SIGINT)
 			cmd.Process.Kill()
 			r := <-done

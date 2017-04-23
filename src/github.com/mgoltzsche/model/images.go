@@ -1,6 +1,7 @@
 package model
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"github.com/appc/docker2aci/lib"
@@ -13,6 +14,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"syscall"
 )
 
 type PullPolicy string
@@ -23,16 +25,22 @@ const (
 	PULL_UPDATE PullPolicy = "update"
 )
 
+type UserGroup struct {
+	Uid uint32
+	Gid uint32
+}
+
 type Images struct {
 	localImagePrefix string
 	filePath         string
 	images           map[string]*ImageMetadata
 	pullPolicy       PullPolicy
+	fetchAs          *UserGroup
 	debug            log.Logger
 }
 
-func NewImages(d *PodDescriptor, pullPolicy PullPolicy, debug log.Logger) *Images {
-	return &Images{d.Name, d.File, map[string]*ImageMetadata{}, pullPolicy, debug}
+func NewImages(d *PodDescriptor, pullPolicy PullPolicy, fetchAs *UserGroup, debug log.Logger) *Images {
+	return &Images{d.Name, d.File, map[string]*ImageMetadata{}, pullPolicy, fetchAs, debug}
 }
 
 func (self *Images) Image(s *ServiceDescriptor) (img *ImageMetadata, err error) {
@@ -62,12 +70,22 @@ func (self *Images) fetchImage(name string, pullPolicy PullPolicy) (r *ImageMeta
 	if strings.Index(name, "docker://") == 0 {
 		insecOpt = "image"
 	}
-	out, err := utils.ExecCommand("rkt", "fetch", "--pull-policy="+string(pullPolicy), "--insecure-options="+insecOpt, name)
-	if err != nil {
-		return nil, fmt.Errorf("Cannot fetch image %q: %s", name, err)
+	var stderr bytes.Buffer
+	c := exec.Command("rkt", "fetch", "--pull-policy="+string(pullPolicy), "--insecure-options="+insecOpt, name)
+	c.SysProcAttr = &syscall.SysProcAttr{Credential: &syscall.Credential{Uid: self.fetchAs.Uid, Gid: self.fetchAs.Gid}}
+	if pullPolicy == PULL_NEVER {
+		c.Stderr = &stderr
+	} else {
+		c.Stderr = os.Stderr
 	}
-	id := utils.ToTrimmedString(out)
-	out, err = utils.ExecCommand("rkt", "image", "cat-manifest", id)
+	out, err := c.Output()
+	if err != nil {
+		return nil, fmt.Errorf("Cannot fetch image %q: %s. %s", name, err, stderr.String())
+	}
+	id := strings.TrimRight(string(out), "\n")
+	c = exec.Command("rkt", "image", "cat-manifest", id)
+	c.Stderr = os.Stderr // TODO: set log
+	out, err = c.Output()
 	if err != nil {
 		return nil, fmt.Errorf("Cannot load image manifest %q: %s", name, err)
 	}
@@ -98,12 +116,13 @@ func (self *Images) buildImage(imgName string, b *ServiceBuildDescriptor) (img *
 	}
 	imgFile := filepath.FromSlash(self.toImageDescriptorFile(b))
 	self.debug.Printf("Building docker image from %q...", imgFile)
-	utils.ExecCommand("docker", "build", "-t", imgName, "--rm", filepath.Dir(imgFile))
-	self.importLocalDockerImage(imgName)
-	img, err = self.fetchImage(imgName, PULL_NEVER)
-	if err != nil {
+	c := exec.Command("docker", "build", "-t", imgName, "--rm", filepath.Dir(imgFile))
+	c.Stdout = os.Stdout // TODO: write to log
+	c.Stderr = os.Stderr
+	if err = self.importLocalDockerImage(imgName); err != nil {
 		return
 	}
+	img, err = self.fetchImage(imgName, PULL_NEVER)
 	return
 }
 
@@ -154,13 +173,16 @@ func (self *Images) importLocalDockerImage(imgName string) error {
 	if len(aciLayerPaths) < 1 {
 		return fmt.Errorf("Multiple ACI files returned by docker2aci: %s", err)
 	}
-	out, err := utils.ExecCommand("rkt", "prepare", "--quiet=true", "--insecure-options=image", aciLayerPaths[0])
+	var stderr bytes.Buffer
+	c := exec.Command("rkt", "prepare", "--quiet=true", "--insecure-options=image", aciLayerPaths[0])
+	c.Stderr = &stderr
+	out, err := c.Output()
 	if err != nil {
-		return fmt.Errorf("Cannot prepare pod: %s", err)
+		return fmt.Errorf("Cannot import converted docker image: %s. %s", err, stderr.String())
 	}
-	cId := utils.ToTrimmedString(out)
+	cId := strings.TrimRight(string(out), "\n")
 	if e := exec.Command("rkt", "rm", cId).Run(); e != nil {
-		return fmt.Errorf("Cannot remove rkt container %q", cId)
+		return fmt.Errorf("Cannot remove rkt pod %q used to import converted docker image: %s", cId, e)
 	}
 	return nil
 }

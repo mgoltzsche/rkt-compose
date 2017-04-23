@@ -8,18 +8,22 @@ import (
 	"github.com/mgoltzsche/model"
 	"os"
 	"os/signal"
+	"os/user"
 	"path/filepath"
+	"strconv"
 	"syscall"
 	"time"
 )
 
 type GlobalOptions struct {
-	Verbose bool `opt:"verbose,false,Enables verbose logging"`
+	Verbose bool   `opt:"verbose,false,Enables verbose logging"`
+	Uid     string `opt:"fetch-uid,1000,Sets the user used to fetch images"`
+	Gid     string `opt:"fetch-gid,rkt,Sets the group used to fetch images"`
 }
 
 type RunOptions struct {
 	PodFile        string        `param:"PODFILE,"`
-	UuidFile       string        `opt:"uuid-file,,File to save pod UUID to. If provided last container will be removed on container start"`
+	UuidFile       string        `opt:"uuid-file,,File to write pod UUID to. If provided last container is removed on container start"`
 	Name           string        `opt:"name,,Sets the pod's name"`
 	ConsulAddress  string        `opt:"consul-address,,Sets consul address to register the service"`
 	ConsulCheckTtl time.Duration `opt:"consul-check-ttl,60s,Sets consul check TTL"` // TODO: encode default values in tag
@@ -39,25 +43,67 @@ func main() {
 	args.AddCmd("dump", "Loads a pod model and dumps it as JSON", &dumpOpts, dumpPod)
 	err := args.Run()
 	if err != nil {
-		os.Stderr.WriteString(fmt.Sprintf("%s\n", err))
+		errorLog.Println(err)
 		os.Exit(1)
 	}
 }
 
-var errorLog log.Logger
-var debugLog log.Logger
+var errorLog = log.NewStdLogger(os.Stderr)
+var debugLog = log.NewNopLogger()
+var fetchAs model.UserGroup
 
-func initLogs() {
-	errorLog = log.NewStdLogger(os.Stderr)
-	debugLog = log.NewNopLogger()
+func initContext() error {
+	// Init logger
 	if globOpts.Verbose {
 		debugLog = log.NewStdLogger(os.Stderr)
 	}
+	// Init fetchAs
+	u, err := user.LookupId(globOpts.Uid)
+	if err != nil {
+		u, err = user.Lookup(globOpts.Uid)
+		if err != nil {
+			return fmt.Errorf("Cannot find user %q", globOpts.Uid)
+		}
+	}
+	g, err := user.LookupGroupId(globOpts.Gid)
+	if err != nil {
+		g, err = user.LookupGroup(globOpts.Gid)
+		if err != nil {
+			return fmt.Errorf("Cannot find group %q", globOpts.Gid)
+		}
+	}
+	uid, err := strconv.ParseUint(u.Uid, 10, 32)
+	if err != nil {
+		panic("Cannot parse user ID: " + u.Uid)
+	}
+	gid, err := strconv.ParseUint(g.Gid, 10, 32)
+	if err != nil {
+		panic("Cannot parse group ID: " + g.Gid)
+	}
+	gids, err := u.GroupIds()
+	if err != nil {
+		panic("Could not look up user's group IDs: " + err.Error())
+	}
+	hasGid := false
+	for _, gid := range gids {
+		if g.Gid == gid {
+			hasGid = true
+			break
+		}
+	}
+	if !hasGid {
+		return fmt.Errorf("User %s is not in group %s", globOpts.Uid, globOpts.Gid)
+	}
+	fetchAs.Uid = uint32(uid)
+	fetchAs.Gid = uint32(gid)
+	return nil
 }
 
 func runPod() error {
-	initLogs()
-	models := model.NewDescriptors(debugLog)
+	if err := initContext(); err != nil {
+		return err
+	}
+	models := model.NewDescriptors(&fetchAs, debugLog)
 	descr, err := models.Descriptor(runOpts.PodFile)
 	if err != nil {
 		return err
@@ -106,12 +152,14 @@ func handleSignals(l *launcher.PodLauncher) {
 }
 
 func dumpPod() error {
-	initLogs()
+	if err := initContext(); err != nil {
+		return err
+	}
 	descrFile, err := filepath.Abs(filepath.FromSlash(dumpOpts.PodFile))
 	if err != nil {
 		return err
 	}
-	models := model.NewDescriptors(debugLog)
+	models := model.NewDescriptors(&fetchAs, debugLog)
 	descr, err := models.Descriptor(descrFile)
 	if err != nil {
 		return err

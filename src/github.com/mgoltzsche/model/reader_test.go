@@ -18,7 +18,7 @@ func TestRead(t *testing.T) {
 		return
 	}
 	expected := strings.Trim(string(expectedBytes), "\n")
-	models := NewDescriptors(log.New(os.Stdout, "", 0))
+	models := NewDescriptors(&UserGroup{1000, 997}, log.New(os.Stdout, "", 0))
 	descr, e := models.Descriptor(inFile)
 	if e != nil {
 		t.Errorf("models.Descriptor(%q) returned error: %s", inFile, e)

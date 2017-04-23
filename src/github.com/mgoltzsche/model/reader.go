@@ -21,11 +21,12 @@ var idRegexp = regexp.MustCompile("^[a-z0-9\\-]+$")
 
 type Descriptors struct {
 	descriptors map[string]*PodDescriptor
+	fetchAs     *UserGroup
 	debug       log.Logger
 }
 
-func NewDescriptors(debug log.Logger) *Descriptors {
-	return &Descriptors{map[string]*PodDescriptor{}, debug}
+func NewDescriptors(fetchAs *UserGroup, debug log.Logger) *Descriptors {
+	return &Descriptors{map[string]*PodDescriptor{}, fetchAs, debug}
 }
 
 func (self *Descriptors) Descriptor(file string) (r *PodDescriptor, err error) {
@@ -123,7 +124,7 @@ func (self *Descriptors) loadDescriptor(filePath string) (r *PodDescriptor) {
 }
 
 func (self *Descriptors) addFetchedImages(pod *PodDescriptor, pullPolicy PullPolicy) {
-	imgs := NewImages(pod, pullPolicy, self.debug)
+	imgs := NewImages(pod, pullPolicy, self.fetchAs, self.debug)
 	for _, s := range pod.Services {
 		img, err := imgs.Image(s)
 		panicOnError(err)

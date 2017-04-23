@@ -98,24 +98,17 @@ func (ctx *PodLauncher) Start() (err error) {
 	ctx.mutex.Lock()
 	defer ctx.mutex.Unlock()
 	if len(ctx.podUUID) > 0 {
-		return errors.New("launcher: pod already running")
+		return fmt.Errorf("launcher: pod already running: %s", ctx.podUUID)
 	}
 	ctx.err = nil
-	prepareArgs, err := toRktPrepareArgs(ctx.descriptor)
+	runArgsBuilder := toRktRunArgs(ctx.descriptor)
+	err = ctx.createVolumeDirectories()
 	if err != nil {
 		return
 	}
-	runArgsBuilder := toRktRunArgs(ctx.descriptor)
-	ctx.createVolumeDirectories()
-	ctx.removeLastPod()
-	ctx.debug.Println("Preparing pod...")
-	out, err := utils.ExecCommand("rkt", prepareArgs...)
+	err = ctx.prepare()
 	if err != nil {
-		return fmt.Errorf("Failed to prepare pod: %s", err)
-	}
-	ctx.podUUID = utils.ToTrimmedString(out)
-	if err := ctx.writeUuidFile(); err != nil {
-		return err
+		return
 	}
 	runArgs := runArgsBuilder.add(ctx.podUUID).toSlice()
 	ctx.debug.Println("Starting pod...")
@@ -153,6 +146,27 @@ func (ctx *PodLauncher) Stop() (err error) {
 		ctx.err = nil
 	}
 	return
+}
+
+func (ctx *PodLauncher) prepare() error {
+	ctx.debug.Println("Preparing pod...")
+	ctx.removeLastPod()
+	prepareArgs, err := toRktPrepareArgs(ctx.descriptor)
+	if err != nil {
+		return err
+	}
+	c := exec.Command("rkt", prepareArgs...)
+	c.Stderr = os.Stderr
+	out, err := c.Output()
+	if err != nil {
+		return fmt.Errorf("Failed to prepare pod: %s", err)
+	}
+	ctx.podUUID = strings.TrimRight(string(out), "\n")
+	err = ctx.writeUuidFile()
+	if err != nil {
+		exec.Command("rkt", "rm", ctx.podUUID).Run()
+	}
+	return err
 }
 
 func (ctx *PodLauncher) run() {
@@ -260,12 +274,20 @@ func (ctx *PodLauncher) MarkGarbageContainersQuiet() {
 	}
 }
 
-func (ctx *PodLauncher) createVolumeDirectories() {
+func (ctx *PodLauncher) createVolumeDirectories() error {
 	ctx.debug.Println("Creating volume directories...")
 	for _, vol := range ctx.descriptor.Volumes {
 		volFile := absFile(vol.Source, ctx.descriptor)
-		os.MkdirAll(volFile, 0770)
+		_, err := os.Stat(volFile)
+		if os.IsNotExist(err) {
+			if err := os.MkdirAll(volFile, 0770); err != nil {
+				return fmt.Errorf("Failed to create volume directories: %s", err)
+			}
+		} else if err != nil {
+			return fmt.Errorf("Cannot access volume: %s", err)
+		}
 	}
+	return nil
 }
 
 func toRktRunArgs(pod *model.PodDescriptor) *args {
