@@ -15,10 +15,15 @@ import (
 	"time"
 )
 
+//
+// Permission info:
+// - rkt fetch can be run by unprivileged user in rkt group.
+// - rkt prepare|run-prepared can be run unprivileged user in rkt-admin group?
+
 type GlobalOptions struct {
 	Verbose bool   `opt:"verbose,false,Enables verbose logging"`
-	Uid     string `opt:"fetch-uid,1000,Sets the user used to fetch images"`
-	Gid     string `opt:"fetch-gid,rkt,Sets the group used to fetch images"`
+	Uid     string `opt:"fetch-uid,0,Sets the user used to fetch images"`
+	Gid     string `opt:"fetch-gid,0,Sets the group used to fetch images"`
 }
 
 type RunOptions struct {
