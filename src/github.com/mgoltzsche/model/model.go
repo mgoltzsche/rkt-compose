@@ -31,8 +31,7 @@ type PodDescriptor struct {
 	Environment     map[string]string             `json:"environment,omitempty"`
 	Services        map[string]*ServiceDescriptor `json:"services"`
 	Volumes         map[string]*VolumeDescriptor  `json:"volumes,omitempty"`
-	StopGracePeriod string                        `json:"stop_grace_period,omitempty"`
-	StopSignal      string                        `json:"stop_signal,omitempty"`
+	StopGracePeriod Duration                      `json:"stop_grace_period,omitempty"`
 }
 
 type ServiceDescriptor struct {

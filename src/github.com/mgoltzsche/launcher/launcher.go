@@ -156,6 +156,7 @@ func (ctx *PodLauncher) prepare() error {
 		return err
 	}
 	c := exec.Command("rkt", prepareArgs...)
+	c.SysProcAttr = &syscall.SysProcAttr{Setpgid: true} // Run in separate process group to be able to shutdown health checks before container
 	c.Stderr = os.Stderr
 	out, err := c.Output()
 	if err != nil {
@@ -184,29 +185,31 @@ func (ctx *PodLauncher) onPodTerminated() {
 func (ctx *PodLauncher) terminate() (err error) {
 	if ctx.cmd != nil && ctx.cmd.Process != nil {
 		ctx.debug.Println("Terminating rkt process...")
-		err = ctx.cmd.Process.Signal(syscall.SIGINT)
-		if err == nil {
-			quit := make(chan bool, 1)
-			go func() {
-				ctx.wait.Wait()
-				quit <- true
-			}()
-			select {
-			case <-time.After(time.Second * 10):
-				ctx.error.Println("Killing pod since timeout exceeded")
-				err = ctx.cmd.Process.Kill()
-				if err != nil {
-					err = fmt.Errorf("Failed to kill rkt process: %s", err)
-				}
-				<-quit
-			case <-quit:
+		err = exec.Command("rkt", "stop", ctx.podUUID).Run()
+		if err != nil {
+			ctx.error.Println("Killing pod since termination failed: ", err)
+			err = ctx.cmd.Process.Kill()
+			if err != nil && !ctx.cmd.ProcessState.Exited() {
+				err = fmt.Errorf("Failed to kill rkt process: %s", err)
 			}
-			close(quit)
-		} else if ctx.cmd.ProcessState.Exited() {
-			err = nil
-		} else {
-			err = fmt.Errorf("Failed to terminate rkt process: %s", err)
+			return
 		}
+		quit := make(chan bool, 1)
+		go func() {
+			ctx.wait.Wait()
+			quit <- true
+		}()
+		select {
+		case <-time.After(time.Duration(ctx.descriptor.StopGracePeriod)):
+			ctx.error.Println("Killing pod since stop timeout exceeded")
+			err = ctx.cmd.Process.Kill()
+			if err != nil && !ctx.cmd.ProcessState.Exited() {
+				err = fmt.Errorf("Failed to kill rkt process: %s", err)
+			}
+			<-quit
+		case <-quit:
+		}
+		close(quit)
 	}
 	return
 }

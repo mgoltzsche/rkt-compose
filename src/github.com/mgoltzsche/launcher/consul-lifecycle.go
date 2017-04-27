@@ -19,8 +19,8 @@ type ConsulLifecycle struct {
 	debug             log.Logger
 }
 
-func NewConsulLifecycleFactory(consulAddress string, checkTtl time.Duration, debug log.Logger) (LifecycleListenerFactory, error) {
-	client := NewConsulClient(consulAddress)
+func NewConsulLifecycleFactory(address string, checkTtl time.Duration, debug log.Logger) (LifecycleListenerFactory, error) {
+	client := NewConsulClient(address)
 	if !client.CheckAvailability(30) {
 		return nil, errors.New("Consul unavailable")
 	}

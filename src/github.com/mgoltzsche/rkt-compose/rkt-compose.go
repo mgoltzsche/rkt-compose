@@ -22,15 +22,19 @@ type GlobalOptions struct {
 }
 
 type RunOptions struct {
-	PodFile        string        `param:"PODFILE,"`
-	UuidFile       string        `opt:"uuid-file,,File to write pod UUID to. If provided last container is removed on container start"`
-	Name           string        `opt:"name,,Sets the pod's name"`
-	ConsulAddress  string        `opt:"consul-address,,Sets consul address to register the service"`
-	ConsulCheckTtl time.Duration `opt:"consul-check-ttl,60s,Sets consul check TTL"` // TODO: encode default values in tag
+	PodFile                string        `param:"PODFILE,"`
+	UuidFile               string        `opt:"uuid-file,,Pod UUID file. If provided last container is removed on container start"`
+	Name                   string        `opt:"name,,Pod name. Used for service discovery and as default hostname"`
+	DefaultVolumeDirectory string        `opt:"default-volume-dir,./volumes,Default volume base directory"`
+	ConsulIP               string        `opt:"consul-ip,,Sets consul IP and enables service discovery"`
+	ConsulApiPort          string        `opt:"consul-api-port,8500,Consul API port"`
+	ConsulDatacenter       string        `opt:"consul-datacenter,dc1,Consul datacenter"`
+	ConsulCheckTtl         time.Duration `opt:"consul-check-ttl,60s,Consul check TTL"`
 }
 
 type DumpOptions struct {
-	PodFile string `param:"PODFILE,"`
+	PodFile                string `param:"PODFILE,"`
+	DefaultVolumeDirectory string `opt:"default-volume-dir,./volumes,Default volume base directory"`
 }
 
 var globOpts GlobalOptions
@@ -103,7 +107,7 @@ func runPod() error {
 	if err := initContext(); err != nil {
 		return err
 	}
-	models := model.NewDescriptors(&fetchAs, debugLog)
+	models := model.NewDescriptors(runOpts.DefaultVolumeDirectory, &fetchAs, debugLog)
 	descr, err := models.Descriptor(runOpts.PodFile)
 	if err != nil {
 		return err
@@ -116,11 +120,17 @@ func runPod() error {
 		descr.Name = runOpts.Name
 	}
 	var listener launcher.LifecycleListenerFactory
-	//dumpModel(pod)
-	// TODO: configure consul optionally
-	// TODO: set health to critical on container stop
-	if len(runOpts.ConsulAddress) > 0 {
-		listener, err = launcher.NewConsulLifecycleFactory(runOpts.ConsulAddress, runOpts.ConsulCheckTtl, debugLog)
+	if len(runOpts.ConsulIP) > 0 {
+		// Enable consul service discovery
+		globalNS := "service." + runOpts.ConsulDatacenter + ".consul"
+		localNS := descr.Name + "." + globalNS
+		if len(descr.Dns) > 0 && descr.Dns[0] == "host" {
+			descr.Dns = []string{runOpts.ConsulIP}
+		} else {
+			descr.Dns = append([]string{runOpts.ConsulIP}, descr.Dns...)
+		}
+		descr.DnsSearch = append([]string{localNS, globalNS}, descr.DnsSearch...)
+		listener, err = launcher.NewConsulLifecycleFactory("http://"+runOpts.ConsulIP+":"+runOpts.ConsulApiPort, runOpts.ConsulCheckTtl, debugLog)
 		if err != nil {
 			return err
 		}
@@ -159,7 +169,7 @@ func dumpPod() error {
 	if err != nil {
 		return err
 	}
-	models := model.NewDescriptors(&fetchAs, debugLog)
+	models := model.NewDescriptors(dumpOpts.DefaultVolumeDirectory, &fetchAs, debugLog)
 	descr, err := models.Descriptor(descrFile)
 	if err != nil {
 		return err

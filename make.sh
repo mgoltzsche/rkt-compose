@@ -1,6 +1,6 @@
 #! /bin/sh
 
-# Go 1.8+ required:
+# Go 1.8+ required. Ubuntu installation:
 #  sudo add-apt-repository ppa:longsleep/golang-backports
 #  sudo apt-get update
 #  sudo apt-get install golang-go
@@ -11,21 +11,20 @@ export GOPATH="$(cd "$GOPATH" && pwd)" || exit 1
 # Format code
 gofmt -w "$GOPATH/src/github.com/mgoltzsche"
 
-# Fetch yaml go dependency
+# Fetch dependencies
 go get gopkg.in/yaml.v2 &&
 go get gopkg.in/appc/docker2aci.v0 &&
-#go get gopkg.in/hashicorp/consul.v0 &&
 
-# Build statically linked binary to $GOPATH/bin/rkt-compose
+# Build linked binary to $GOPATH/bin/rkt-compose
 go install github.com/mgoltzsche/rkt-compose &&
 
 # Build and run tests
 go test github.com/mgoltzsche/model &&
 
 # Run
-#sudo bin/rkt-compose run --name=consul --uuid-file=/var/run/consul.uuid resources/consul.json
-sudo "$GOPATH/bin/rkt-compose" --verbose=true run --name=testpod --uuid-file=/var/run/pod.uuid --consul-address=http://172.16.28.1:8500 resources/example-docker-compose-images.yml
+sudo "$GOPATH/bin/rkt-compose" --verbose=true run --name=testpod resources/example-docker-compose-images.yml
 
-#sudo "$GOPATH/bin/rkt-compose" --verbose=true run --name=testpod resources/example-docker-compose-images.yml
+#sudo bin/rkt-compose run --name=consul --uuid-file=/var/run/consul.uuid resources/consul.json
+#sudo "$GOPATH/bin/rkt-compose" --verbose=true run --name=testpod --uuid-file=/var/run/pod.uuid --consul-ip=172.16.28.1 resources/example-docker-compose-images.yml
 
 #sudo bin/rkt-compose dump resources/example-docker-compose-images.yml

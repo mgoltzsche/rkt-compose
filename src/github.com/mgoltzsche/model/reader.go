@@ -20,13 +20,14 @@ import (
 var idRegexp = regexp.MustCompile("^[a-z0-9\\-]+$")
 
 type Descriptors struct {
-	descriptors map[string]*PodDescriptor
-	fetchAs     *UserGroup
-	debug       log.Logger
+	descriptors          map[string]*PodDescriptor
+	defaultVolumeBaseDir string
+	fetchAs              *UserGroup
+	debug                log.Logger
 }
 
-func NewDescriptors(fetchAs *UserGroup, debug log.Logger) *Descriptors {
-	return &Descriptors{map[string]*PodDescriptor{}, fetchAs, debug}
+func NewDescriptors(defaultVolumeBaseDir string, fetchAs *UserGroup, debug log.Logger) *Descriptors {
+	return &Descriptors{map[string]*PodDescriptor{}, defaultVolumeBaseDir, fetchAs, debug}
 }
 
 func (self *Descriptors) Descriptor(file string) (r *PodDescriptor, err error) {
@@ -55,7 +56,7 @@ func (self *Descriptors) Complete(pod *PodDescriptor, pullPolicy PullPolicy) (er
 	resolveEnvFiles(pod)
 	fileMountsToVolumes(pod)
 	self.addFetchedImages(pod, pullPolicy)
-	addImageVolumes(pod)
+	self.addImageVolumes(pod)
 	for _, s := range pod.Services {
 		if len(s.Entrypoint) == 0 {
 			s.Entrypoint = s.FetchedImage.Exec
@@ -79,7 +80,7 @@ func (self *Descriptors) loadDescriptor(filePath string) (r *PodDescriptor) {
 		fileExt := filepath.Ext(filePath)
 		r = NewPodDescriptor()
 		if fileExt == ".yml" || fileExt == ".yaml" {
-			readDockerCompose(filePath, r)
+			self.readDockerCompose(filePath, r)
 		} else {
 			readPodJson(filePath, r)
 		}
@@ -116,6 +117,9 @@ func (self *Descriptors) loadDescriptor(filePath string) (r *PodDescriptor) {
 			if len(v.Kind) == 0 {
 				v.Kind = "host"
 			}
+		}
+		if r.StopGracePeriod == 0 {
+			r.StopGracePeriod = Duration(10 * time.Second)
 		}
 		validate(r)
 		self.descriptors[filePath] = r
@@ -179,11 +183,11 @@ func fileMountsToVolumes(pod *PodDescriptor) {
 	}
 }
 
-func addImageVolumes(pod *PodDescriptor) {
+func (self *Descriptors) addImageVolumes(pod *PodDescriptor) {
 	for _, s := range pod.Services {
 		for volName, _ := range s.FetchedImage.MountPoints {
 			if _, ok := pod.Volumes[volName]; !ok {
-				src := "./volumes/" + volName
+				src := self.defaultVolumeBaseDir + "/" + volName
 				pod.Volumes[volName] = &VolumeDescriptor{src, "host", false}
 			}
 		}
@@ -331,12 +335,12 @@ func readPodJson(file string, r *PodDescriptor) {
 	panicOnError(err)
 }
 
-func readDockerCompose(file string, r *PodDescriptor) {
+func (self *Descriptors) readDockerCompose(file string, r *PodDescriptor) {
 	c := dockerCompose{}
 	bytes := readFile(file)
 	err := yaml.Unmarshal(bytes, &c)
 	panicOnError(err)
-	transformDockerCompose(&c, r)
+	self.transformDockerCompose(&c, r)
 }
 
 func readFile(file string) []byte {
@@ -345,7 +349,7 @@ func readFile(file string) []byte {
 	return b
 }
 
-func transformDockerCompose(c *dockerCompose, r *PodDescriptor) {
+func (self *Descriptors) transformDockerCompose(c *dockerCompose, r *PodDescriptor) {
 	version, err := strconv.ParseFloat(c.Version, 32)
 	if err != nil {
 		panic("Invalid version format: " + c.Version)
@@ -379,7 +383,7 @@ func transformDockerCompose(c *dockerCompose, r *PodDescriptor) {
 		r.Services[k] = s
 	}
 	for k := range c.Volumes {
-		r.Volumes[k] = &VolumeDescriptor{"./volumes/" + k, "host", false}
+		r.Volumes[k] = &VolumeDescriptor{self.defaultVolumeBaseDir + "/" + k, "host", false}
 	}
 }
 

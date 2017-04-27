@@ -80,5 +80,6 @@
       "kind": "host",
       "readonly": false
     }
-  }
+  },
+  "stop_grace_period": "10s"
 }

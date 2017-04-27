@@ -185,15 +185,19 @@ func (c *HealthChecks) updateStatus(r *HealthCheckResult) (changed bool) {
 }
 
 func (c *HealthChecks) combinedOutput() string {
-	msg := make([]string, len(c.checkResults))
-	for i, r := range c.checkResults {
-		if len(r.output) > 0 {
-			msg[i] = fmt.Sprintf("%s %s - %s", r.name, r.status, strings.Replace(r.output, "\n", "\n  ", -1))
-		} else {
-			msg[i] = fmt.Sprintf("%s %s", r.name, r.status)
+	if len(c.checkResults) == 1 {
+		return c.checkResults[0].output
+	} else {
+		msg := make([]string, len(c.checkResults))
+		for i, r := range c.checkResults {
+			if len(r.output) > 0 {
+				msg[i] = fmt.Sprintf("%s %s - %s", r.name, r.status, strings.Replace(r.output, "\n", "\n  ", -1))
+			} else {
+				msg[i] = fmt.Sprintf("%s %s", r.name, r.status)
+			}
 		}
+		return strings.Join(msg, "\n")
 	}
-	return strings.Join(msg, "\n")
 }
 
 func NewHealthCheck(name string, interval time.Duration, indicator HealthIndicator) *HealthCheck {
@@ -237,7 +241,6 @@ func NewCommandBasedHealthIndicator(debug log.Logger, timeout time.Duration, arg
 	a := args[1:]
 	return func() *HealthCheckResult {
 		cmd := exec.Command(c, a...)
-		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 		stderr, err := cmd.StderrPipe()
 		if err != nil {
 			return NewHealthCheckResult(STATUS_CRITICAL, "Cannot create health check indicator stderr pipe: "+err.Error())
