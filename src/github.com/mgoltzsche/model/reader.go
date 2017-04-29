@@ -85,6 +85,7 @@ func (self *Descriptors) loadDescriptor(filePath string) (r *PodDescriptor) {
 			readPodJson(filePath, r)
 		}
 		r.File = filePath
+		// Set defaults
 		for _, v := range r.Services {
 			if v.Entrypoint == nil {
 				v.Entrypoint = []string{}
@@ -117,6 +118,9 @@ func (self *Descriptors) loadDescriptor(filePath string) (r *PodDescriptor) {
 			if len(v.Kind) == 0 {
 				v.Kind = "host"
 			}
+		}
+		if r.SharedKeys == nil {
+			r.SharedKeys = map[string]string{}
 		}
 		if r.StopGracePeriod == 0 {
 			r.StopGracePeriod = Duration(10 * time.Second)
@@ -357,6 +361,7 @@ func (self *Descriptors) transformDockerCompose(c *dockerCompose, r *PodDescript
 	if version > 3 {
 		os.Stderr.WriteString("Warn: docker compose version >3 is not supported\n")
 	}
+	r.SharedKeys = map[string]string{}
 	for k, v := range c.Services {
 		p := "services." + k
 		s := &ServiceDescriptor{}
@@ -380,6 +385,13 @@ func (self *Descriptors) transformDockerCompose(c *dockerCompose, r *PodDescript
 		s.Mounts = toVolumeMounts(v.Volumes, p+".volumes")
 		s.Ports = toPorts(v.Ports, p+".ports")
 		s.HealthCheck = toHealthCheckDescriptor(v.HealthCheck, p+".healthcheck")
+		if httpHost := s.Environment["HTTP_HOST"]; httpHost != "" {
+			httpPort := s.Environment["HTTP_PORT"]
+			if httpPort == "" {
+				panic("HTTP_HOST without HTTP_PORT env var defined in service: " + k)
+			}
+			r.SharedKeys["http/"+httpHost] = k + ":" + httpPort
+		}
 		r.Services[k] = s
 	}
 	for k := range c.Volumes {

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"time"
@@ -53,9 +54,8 @@ func NewConsulClient(address string) *ConsulClient {
 }
 
 func (c *ConsulClient) CheckAvailability(maxRetries uint) bool {
-	var err error
 	for i := uint(0); i <= maxRetries; i++ {
-		err = c.request(http.NewRequest("GET", fmt.Sprintf("%s/v1/kv/?keys", c.address), nil))
+		_, err := c.request("GET", "kv/?keys", nil, 200)
 		if err == nil {
 			return true
 		}
@@ -76,35 +76,57 @@ func (c *ConsulClient) CheckAvailability(maxRetries uint) bool {
 func (c *ConsulClient) RegisterService(s *Service) error {
 	j, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
-		return toError("%s", err)
+		return toError("unmarshallable service registration payload: %s", err)
 	}
-	return c.request(http.NewRequest("PUT", fmt.Sprintf("%s/v1/agent/service/register", c.address), bytes.NewReader(j)))
+	_, err = c.request("PUT", "agent/service/register", bytes.NewReader(j), 200)
+	return err
 }
 
 func (c *ConsulClient) DeregisterService(id string) error {
-	return c.request(http.NewRequest("GET", fmt.Sprintf("%s/v1/agent/service/deregister/%s", c.address, id), nil))
+	_, err := c.request("GET", "agent/service/deregister/"+id, nil, 200)
+	return err
 }
 
 func (c *ConsulClient) ReportHealth(checkId string, r *Health) error {
 	j, err := json.MarshalIndent(r, "", "  ")
 	if err != nil {
-		return toError("%s", err)
+		return toError("unmarshallable check update payload: %s", err)
 	}
-	return c.request(http.NewRequest("PUT", fmt.Sprintf("%s/v1/agent/check/update/%s", c.address, checkId), bytes.NewReader(j)))
+	_, err = c.request("PUT", "agent/check/update/"+checkId, bytes.NewReader(j), 200)
+	return err
 }
 
-func (c *ConsulClient) request(req *http.Request, err error) error {
+func (c *ConsulClient) GetKey(k string) (string, error) {
+	return c.request("GET", "kv/"+k+"?raw", nil, 200, 404)
+}
+
+func (c *ConsulClient) SetKey(k, v string) error {
+	_, err := c.request("PUT", "kv/"+k, bytes.NewReader([]byte(v)), 200)
+	return err
+}
+
+func (c *ConsulClient) request(method, path string, body io.Reader, successStatusCodes ...int) (string, error) {
+	req, err := http.NewRequest(method, fmt.Sprintf("%s/v1/%s", c.address, path), body)
 	if err != nil {
-		return toError("%s", err)
+		return "", toError("invalid request: %s", err)
 	}
 	r, err := c.client.Do(req)
 	if err != nil {
-		return toError("%s", err)
+		return "", toError("request failed: %s", err)
 	}
-	if r.StatusCode != 200 {
-		return toError("status %d", r.StatusCode)
+	success := false
+	for _, successCode := range successStatusCodes {
+		if r.StatusCode == successCode {
+			success = true
+			break
+		}
 	}
-	return nil
+	if !success {
+		return "", toError("status %d: %s %s", r.StatusCode, req.Method, req.URL)
+	}
+	buf := new(bytes.Buffer)
+	buf.ReadFrom(r.Body)
+	return buf.String(), nil
 }
 
 func toError(f string, v ...interface{}) error {

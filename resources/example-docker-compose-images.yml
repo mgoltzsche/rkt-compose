@@ -5,6 +5,9 @@ services:
     entrypoint: ["/bin/sh", "-c", "term() {\necho Terminating; sleep 3; echo Terminated; exit 0\n}\n trap term SIGHUP SIGINT SIGQUIT SIGTERM && echo hello from fetched container; sleep 60; echo terminated"]
     env_file:
       - ./example.env
+    environment:
+      HTTP_HOST: service.example.org
+      HTTP_PORT: 80
     volumes:
       - data:/data
       - ./example-docker-compose-images.yml:/images.yml

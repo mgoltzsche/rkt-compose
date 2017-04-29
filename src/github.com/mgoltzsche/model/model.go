@@ -19,19 +19,21 @@ func NewPodDescriptor() *PodDescriptor {
 }
 
 type PodDescriptor struct {
-	File            string                        `json:"-"`
-	Version         uint8                         `json:"version"`
-	Name            string                        `json:"name,omitempty"`
-	Net             string                        `json:"net,omitempty"`
-	Dns             []string                      `json:"dns,omitempty"`
-	DnsSearch       []string                      `json:"dns_search,omitempty"`
-	Hostname        string                        `json:"hostname,omitempty"`
-	Domainname      string                        `json:"domainname,omitempty"`
-	InjectHosts     bool                          `json:"inject_hosts"`
-	Environment     map[string]string             `json:"environment,omitempty"`
-	Services        map[string]*ServiceDescriptor `json:"services"`
-	Volumes         map[string]*VolumeDescriptor  `json:"volumes,omitempty"`
-	StopGracePeriod Duration                      `json:"stop_grace_period,omitempty"`
+	File                      string                        `json:"-"`
+	Version                   uint8                         `json:"version"`
+	Name                      string                        `json:"name,omitempty"`
+	Net                       string                        `json:"net,omitempty"`
+	Dns                       []string                      `json:"dns,omitempty"`
+	DnsSearch                 []string                      `json:"dns_search,omitempty"`
+	Hostname                  string                        `json:"hostname,omitempty"`
+	Domainname                string                        `json:"domainname,omitempty"`
+	InjectHosts               bool                          `json:"inject_hosts"`
+	Environment               map[string]string             `json:"environment,omitempty"`
+	Services                  map[string]*ServiceDescriptor `json:"services"`
+	Volumes                   map[string]*VolumeDescriptor  `json:"volumes,omitempty"`
+	SharedKeys                map[string]string             `json:"shared_keys,omitempty"`
+	SharedKeysOverrideAllowed bool                          `json:"shared_keys_overridable"`
+	StopGracePeriod           Duration                      `json:"stop_grace_period,omitempty"`
 }
 
 type ServiceDescriptor struct {

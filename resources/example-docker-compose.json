@@ -43,6 +43,8 @@
         "./my.env"
       ],
       "environment": {
+        "HTTP_HOST": "myservice.example.org",
+        "HTTP_PORT": "5550",
         "MYVARA": "valA",
         "MYVARB": "valB"
       },
@@ -81,5 +83,9 @@
       "readonly": false
     }
   },
+  "shared_keys": {
+    "http/myservice.example.org": "myservice:5550"
+  },
+  "shared_keys_overridable": false,
   "stop_grace_period": "10s"
 }

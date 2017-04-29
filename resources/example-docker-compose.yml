@@ -12,6 +12,8 @@ services:
     environment:
       MYVARA: valA
       MYVARB: valB
+      HTTP_HOST: myservice.example.org
+      HTTP_PORT: 5550
   extservice:
     extends:
       file: ./extended-service/extservice.yml

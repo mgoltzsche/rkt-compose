@@ -47,7 +47,20 @@ func (c *ConsulLifecycle) Start(podUUID, podIP string) (err error) {
 	if err != nil {
 		return
 	}
-	// TODO: create health checks before container start to raise possible errors early
+	for k, v := range c.descriptor.SharedKeys {
+		pubVal, e := c.client.GetKey(k)
+		if e != nil {
+			return e
+		}
+		if pubVal != "" && pubVal != v && !c.descriptor.SharedKeysOverrideAllowed {
+			return fmt.Errorf("Shared key %q is already set and key override is disabled", k)
+		}
+		e = c.client.SetKey(k, v)
+		if e != nil {
+			return e
+		}
+	}
+	// TODO: create health checks before container start to raise possible errors early. Problem: missing podUUID
 	c.checks.Start()
 	return nil
 }
