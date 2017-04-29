@@ -15,22 +15,20 @@ type ConsulLifecycle struct {
 	client            *ConsulClient
 	checks            *checks.HealthChecks
 	minReportInterval time.Duration
+	checkTTL          time.Duration
 	service           *Service
 	debug             log.Logger
 }
 
-func NewConsulLifecycleFactory(address string, checkTtl time.Duration, debug log.Logger) (LifecycleListenerFactory, error) {
+func NewConsulLifecycleFactory(address string, checkTTL time.Duration, debug log.Logger) (LifecycleListenerFactory, error) {
 	client := NewConsulClient(address)
 	if !client.CheckAvailability(30) {
 		return nil, errors.New("Consul unavailable")
 	}
 	return func(pod *model.PodDescriptor) LifecycleListener {
 		// Health checks done within the launcher to be able to run commands within the container
-		tags := toTags(pod.Services)
-		minReportInterval := time.Duration(checkTtl / 2)
-		checkNote := fmt.Sprintf("aggregated checks (Interval: %s, TTL: %s)", minReportInterval.String(), checkTtl.String())
-		service := &Service{pod.Name, "", tags, false, HeartBeat{checkNote, checkTtl.String()}}
-		c := &ConsulLifecycle{pod, "", client, nil, minReportInterval, service, debug}
+		minReportInterval := time.Duration(checkTTL / 2)
+		c := &ConsulLifecycle{pod, "", client, nil, minReportInterval, checkTTL, nil, debug}
 		return c
 	}, nil
 }
@@ -41,35 +39,30 @@ func (c *ConsulLifecycle) Start(podUUID, podIP string) (err error) {
 	if err != nil {
 		return
 	}
-	c.service.Address = podIP
-	c.debug.Printf("Setting IP of consul service %q to %s...", c.descriptor.Name, podIP)
-	err = c.client.RegisterService(c.service)
+	tags := toTags(c.descriptor.Services)
+	checkTTL := c.checkTTL.String()
+	checkNote := fmt.Sprintf("Aggregated checks (Interval: %s, TTL: %s)", c.minReportInterval.String(), checkTTL)
+	check := HeartBeat{checkNote, checkTTL}
+	service := &Service{c.serviceId(), c.descriptor.Name, podIP, tags, false, check}
+	err = c.client.RegisterService(service)
 	if err != nil {
 		return
 	}
-	for k, v := range c.descriptor.SharedKeys {
-		pubVal, e := c.client.GetKey(k)
-		if e != nil {
-			return e
-		}
-		if pubVal != "" && pubVal != v && !c.descriptor.SharedKeysOverrideAllowed {
-			return fmt.Errorf("Shared key %q is already set and key override is disabled", k)
-		}
-		e = c.client.SetKey(k, v)
-		if e != nil {
-			return e
-		}
+	err = c.registerSharedKeys()
+	if err != nil {
+		c.client.DeregisterService(c.serviceId())
+		return
 	}
-	// TODO: create health checks before container start to raise possible errors early. Problem: missing podUUID
 	c.checks.Start()
 	return nil
 }
 
 func (c *ConsulLifecycle) Terminate() error {
 	c.checks.Stop()
-	c.debug.Printf("Deregistering service %q...", c.descriptor.Name)
-	if err := c.client.DeregisterService(c.descriptor.Name); err != nil {
-		return fmt.Errorf("Failed to deregister consul service %q", c.descriptor.Name)
+	serviceId := c.serviceId()
+	c.debug.Printf("Deregistering service %q...", serviceId)
+	if err := c.client.DeregisterService(serviceId); err != nil {
+		return fmt.Errorf("Failed to deregister consul service %q", serviceId)
 	}
 	return nil
 }
@@ -77,7 +70,28 @@ func (c *ConsulLifecycle) Terminate() error {
 func (c *ConsulLifecycle) reportHealth(r *checks.HealthCheckResults) error {
 	status := r.Status().String()
 	c.debug.Printf("Reporting status %s...", status)
-	return c.client.ReportHealth("service:"+c.descriptor.Name, &Health{ConsulHealthStatus(status), r.Output()})
+	return c.client.ReportHealth("service:"+c.serviceId(), &Health{ConsulHealthStatus(status), r.Output()})
+}
+
+func (c *ConsulLifecycle) serviceId() string {
+	return c.descriptor.Name + "-" + c.podUUID
+}
+
+func (c *ConsulLifecycle) registerSharedKeys() error {
+	for k, v := range c.descriptor.SharedKeys {
+		pubVal, err := c.client.GetKey(k)
+		if err != nil {
+			return err
+		}
+		if pubVal != "" && pubVal != v && !c.descriptor.SharedKeysOverrideAllowed {
+			return fmt.Errorf("Shared key %q is already set and key override is disabled", k)
+		}
+		err = c.client.SetKey(k, v)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func toHealthChecks(pod *model.PodDescriptor, podUUID string, reporter checks.HealthReporter, minReportInterval time.Duration, debug log.Logger) (*checks.HealthChecks, error) {

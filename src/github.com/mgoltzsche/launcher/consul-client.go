@@ -11,11 +11,12 @@ import (
 )
 
 type Service struct {
+	ID                string
 	Name              string
 	Address           string
 	Tags              []string
 	EnableTagOverride bool
-	Check             HeartBeat
+	Check             HeartBeat `json:"Check,omitempty"`
 }
 
 type HeartBeat struct {
