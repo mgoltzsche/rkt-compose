@@ -87,5 +87,5 @@
     "http/myservice.example.org": "myservice:5550"
   },
   "shared_keys_overridable": false,
-  "stop_grace_period": "10s"
+  "stop_grace_period": "15s"
 }

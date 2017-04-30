@@ -20,11 +20,10 @@ go install github.com/mgoltzsche/rkt-compose &&
 
 # Build and run tests
 go test github.com/mgoltzsche/model &&
+go test github.com/mgoltzsche/checks &&
 
 # Run
 sudo "$GOPATH/bin/rkt-compose" --verbose=true run --name=testpod resources/example-docker-compose-images.yml
 
 #sudo bin/rkt-compose run --name=consul --uuid-file=/var/run/consul.uuid resources/consul.json
 #sudo "$GOPATH/bin/rkt-compose" --verbose=true run --name=testpod --uuid-file=/var/run/pod.uuid --consul-ip=172.16.28.1 resources/example-docker-compose-images.yml
-
-#sudo bin/rkt-compose dump resources/example-docker-compose-images.yml

@@ -43,6 +43,7 @@ services:
     extends:
       file: ./extended-service/extservice.yml
       service: extselfbuilt
+    stop_grace_period: "15s"
 volumes:
   datavol:
     external: true

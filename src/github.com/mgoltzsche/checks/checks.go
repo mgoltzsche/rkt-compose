@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/mgoltzsche/log"
 	"io/ioutil"
+	"math"
 	"os"
 	"os/exec"
 	"strings"
@@ -88,7 +89,12 @@ func (c *HealthChecks) Start() {
 		panic("healthchecks already started")
 	}
 	checkCount := len(c.checks)
-	c.currentStatus = &HealthCheckResults{STATUS_CRITICAL, "starting"}
+	if checkCount > 0 {
+		c.currentStatus = &HealthCheckResults{STATUS_CRITICAL, "starting"}
+	} else {
+		c.currentStatus = &HealthCheckResults{STATUS_PASSING, "rkt-compose running"}
+		c.doReportStatus()
+	}
 	c.statusCounts = [3]uint{0, 0, uint(checkCount)}
 	c.checkResults = make([]*HealthCheckResult, checkCount)
 	for i := 0; i < checkCount; i++ {
@@ -121,6 +127,7 @@ func (c *HealthChecks) Stop() {
 	c.statusChan = nil
 	c.quitChan = nil
 	c.waitReporter.Wait() // Wait for reporter goroutine to terminate
+	c.currentStatus.status = STATUS_CRITICAL
 	c.reporter = reporter
 	c.doReportStatus()
 }
@@ -207,9 +214,10 @@ func NewHealthCheck(name string, interval time.Duration, indicator HealthIndicat
 func (c *HealthCheck) run(index uint, status chan<- *HealthCheckResult, quit <-chan bool, wait *sync.WaitGroup, debug log.Logger) {
 	defer wait.Done()
 	defer func() { status <- &HealthCheckResult{index, c.name, STATUS_CRITICAL, "check terminated"} }()
+	initInterval := time.Duration(math.Min(float64(time.Second), float64(c.interval)))
 	for i := 0; i < 10; i++ {
 		select {
-		case <-time.After(time.Second):
+		case <-time.After(initInterval):
 			r := c.test()
 			r.index = index
 			r.name = c.name

@@ -74,7 +74,7 @@ func (c *ConsulLifecycle) reportHealth(r *checks.HealthCheckResults) error {
 }
 
 func (c *ConsulLifecycle) serviceId() string {
-	return c.descriptor.Name + "-" + c.podUUID
+	return "rkt-" + c.podUUID
 }
 
 func (c *ConsulLifecycle) registerSharedKeys() error {

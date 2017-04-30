@@ -22,6 +22,7 @@ services:
     healthcheck:
       test: echo healthy selfbuilt
       interval: "10s"
+    stop_grace_period: "10s"
 volumes:
   data:
     external: true

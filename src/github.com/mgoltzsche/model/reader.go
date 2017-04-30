@@ -382,6 +382,15 @@ func (self *Descriptors) transformDockerCompose(c *dockerCompose, r *PodDescript
 		if len(r.Domainname) == 0 {
 			r.Domainname = v.Domainname
 		}
+		if v.StopGracePeriod != "" {
+			stopGracePeriod, err := time.ParseDuration(v.StopGracePeriod)
+			if err != nil {
+				panic("Invalid stop_grace_period format: " + v.StopGracePeriod)
+			}
+			if stopGracePeriod > time.Duration(r.StopGracePeriod) {
+				r.StopGracePeriod = Duration(stopGracePeriod)
+			}
+		}
 		s.Mounts = toVolumeMounts(v.Volumes, p+".volumes")
 		s.Ports = toPorts(v.Ports, p+".ports")
 		s.HealthCheck = toHealthCheckDescriptor(v.HealthCheck, p+".healthcheck")
@@ -620,7 +629,6 @@ type dcServiceDescriptor struct {
 	Ports           []string
 	Volumes         []string
 	StopGracePeriod string `yaml:"stop_grace_period"`
-	StopSignal      string `yaml:"stop_signal"`
 	// TODO: Checkout 'secret' dc property
 }
 
