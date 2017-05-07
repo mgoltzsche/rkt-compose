@@ -16,9 +16,9 @@ type expected struct {
 }
 
 func TestRead(t *testing.T) {
-	inFile := "../../../../resources/reference-model.yml"
-	expectedSimple := newExpected("../../../../resources/reference-model.json")
-	expectedEnhanced := newExpected("../../../../resources/reference-model-effective.json")
+	inFile := "../../../../test-resources/reference-model.yml"
+	expectedSimple := newExpected("../../../../test-resources/reference-model.json")
+	expectedEnhanced := newExpected("../../../../test-resources/reference-model-effective.json")
 	models := NewDescriptors("./volumes", nil, log.New(os.Stdout, "", 0))
 	descr, err := models.Descriptor(inFile)
 	if err != nil {

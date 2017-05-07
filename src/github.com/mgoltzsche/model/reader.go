@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/mgoltzsche/log"
-	"github.com/mgoltzsche/utils"
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"os"
@@ -144,7 +143,7 @@ func resolveEnvFiles(d *PodDescriptor) {
 	for _, s := range d.Services {
 		env := map[string]string{}
 		for _, f := range s.EnvFile {
-			for k, v := range readEnvFile(utils.AbsPath(f, d.File)) {
+			for k, v := range readEnvFile(absPath(f, d.File)) {
 				env[k] = v
 			}
 		}
@@ -181,8 +180,8 @@ func readEnvFile(file string) map[string]string {
 func fileMountsToVolumes(pod *PodDescriptor) {
 	for _, s := range pod.Services {
 		for k, v := range s.Mounts {
-			if utils.IsPath(v) {
-				volName := utils.ToId(v)
+			if isPath(v) {
+				volName := toId(v)
 				s.Mounts[k] = volName
 				if _, ok := pod.Volumes[volName]; !ok {
 					pod.Volumes[volName] = &VolumeDescriptor{v, "host", false}
@@ -210,7 +209,7 @@ func (self *Descriptors) resolveExtensions(d *PodDescriptor, visited map[string]
 			assertTrue(len(s.Extends.File) > 0, "empty", kPath+".extends.file")
 			extPod := d
 			if len(s.Extends.File) > 0 {
-				f := utils.AbsPath(s.Extends.File, d.File)
+				f := absPath(s.Extends.File, d.File)
 				assertTrue(fileExists(f), "file does not exist: "+f, kPath+".extends.file")
 				extPod = self.loadDescriptor(f)
 			}
@@ -233,7 +232,7 @@ func (self *Descriptors) resolveExtensions(d *PodDescriptor, visited map[string]
 					s.Build = &ServiceBuildDescriptor{}
 				}
 				if len(s.Build.Context) == 0 {
-					s.Build.Context = utils.RelPath(utils.AbsPath(extServ.Build.Context, extPod.File), d.File)
+					s.Build.Context = relPath(absPath(extServ.Build.Context, extPod.File), d.File)
 				}
 				if len(s.Build.Dockerfile) == 0 {
 					s.Build.Dockerfile = extServ.Build.Dockerfile
@@ -259,7 +258,7 @@ func (self *Descriptors) resolveExtensions(d *PodDescriptor, visited map[string]
 			}
 			envFiles := []string{}
 			for _, ef := range extServ.EnvFile {
-				envFiles = append(envFiles, utils.RelPath(utils.AbsPath(ef, extPod.File), d.File))
+				envFiles = append(envFiles, relPath(absPath(ef, extPod.File), d.File))
 			}
 			for _, ef := range s.EnvFile {
 				envFiles = append(envFiles, ef)
@@ -269,23 +268,23 @@ func (self *Descriptors) resolveExtensions(d *PodDescriptor, visited map[string]
 			completeMap(extServ.Ports, s.Ports)
 			m := map[string]string{}
 			for t, v := range extServ.Mounts {
-				if utils.IsPath(v) {
-					m[t] = utils.AbsPath(v, extPod.File)
+				if isPath(v) {
+					m[t] = absPath(v, extPod.File)
 				} else {
 					m[t] = v
 				}
 			}
 			for t, v := range s.Mounts {
-				if utils.IsPath(v) {
-					m[t] = utils.AbsPath(v, d.File)
+				if isPath(v) {
+					m[t] = absPath(v, d.File)
 				} else {
 					m[t] = v
 				}
 			}
 			s.Mounts = map[string]string{}
 			for t, v := range m {
-				if utils.IsPath(v) {
-					s.Mounts[t] = utils.RelPath(v, d.File)
+				if isPath(v) {
+					s.Mounts[t] = relPath(v, d.File)
 				} else {
 					s.Mounts[t] = v
 				}

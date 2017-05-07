@@ -7,7 +7,6 @@ import (
 	"github.com/appc/docker2aci/lib"
 	"github.com/appc/docker2aci/lib/common"
 	"github.com/mgoltzsche/log"
-	"github.com/mgoltzsche/utils"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -140,9 +139,9 @@ func (self *Images) toImageName(s *ServiceDescriptor) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("%s: %s", df, err)
 		}
-		uniqName := self.localImagePrefix + "-" + utils.RelPath(df, self.filePath)
+		uniqName := self.localImagePrefix + "-" + relPath(df, self.filePath)
 		tag := st.ModTime().Format("20060102150405")
-		return "local/" + utils.ToId(uniqName) + ":" + tag, nil
+		return "local/" + toId(uniqName) + ":" + tag, nil
 	}
 }
 
@@ -151,7 +150,7 @@ func (self *Images) toImageDescriptorFile(b *ServiceBuildDescriptor) string {
 	if df == "" {
 		df = "Dockerfile"
 	}
-	return utils.AbsPath(path.Join(b.Context, df), self.filePath)
+	return absPath(path.Join(b.Context, df), self.filePath)
 }
 
 func (self *Images) importLocalDockerImage(imgName string) error {
@@ -178,7 +177,7 @@ func (self *Images) importLocalDockerImage(imgName string) error {
 		DockerURL: "",
 	}
 	aciLayerPaths, err := docker2aci.ConvertSavedFile(dockerImgFile.Name(), d2aCfg)
-	aciFile := filepath.Join(os.TempDir(), utils.ToId(imgName)+".aci")
+	aciFile := filepath.Join(os.TempDir(), toId(imgName)+".aci")
 	defer removeFile(aciFile)
 	if len(aciLayerPaths) < 1 {
 		return fmt.Errorf("Multiple ACI files returned by docker2aci: %s", err)

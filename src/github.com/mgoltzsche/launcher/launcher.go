@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"github.com/mgoltzsche/log"
 	"github.com/mgoltzsche/model"
-	"github.com/mgoltzsche/utils"
 	"io/ioutil"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -359,8 +359,13 @@ func toRktPrepareArgs(pod *model.PodDescriptor) ([]string, error) {
 	return r.toSlice(), nil
 }
 
-func absFile(path string, pod *model.PodDescriptor) string {
-	return filepath.FromSlash(utils.AbsPath(path, pod.File))
+func absFile(p string, pod *model.PodDescriptor) string {
+	if len(p) > 0 && p[0:1] == "/" {
+		p = path.Clean(p)
+	} else {
+		p = path.Join(path.Dir(pod.File), p)
+	}
+	return filepath.FromSlash(p)
 }
 
 func containsDockerImage(pod *model.PodDescriptor) bool {
