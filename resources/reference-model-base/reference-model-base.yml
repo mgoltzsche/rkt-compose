@@ -1,6 +1,6 @@
 version: '2'
 services:
-  extservice:
+  baseservice:
     image: alpine:latest
     hostname: service.example.org
     entrypoint:
@@ -10,16 +10,14 @@ services:
     ports:
       - "9000"
     env_file:
-      - ./service.env
+      - ./base.env
     environment:
-      - MYVAR1=val1Ext
-      - MYVAR2=val2Ext
-      - MYVAR3=val3Ext
+      - MYBASEVAR=baseval
     volumes:
       - "./conf.cf:/etc/target.cf"
       - "datavol:/data"
-  extselfbuilt:
-    build: .
+  baseselfbuilt:
+    build: ../docker-build
 volumes:
   datavol:
     external: true

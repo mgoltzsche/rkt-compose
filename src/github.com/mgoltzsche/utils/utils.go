@@ -12,7 +12,7 @@ import (
 var toIdRegexp = regexp.MustCompile("[^a-z0-9]+")
 
 func ToId(v string) string {
-	return strings.Trim(toIdRegexp.ReplaceAllLiteralString(v, "-"), "-")
+	return strings.Trim(toIdRegexp.ReplaceAllLiteralString(strings.ToLower(v), "-"), "-")
 }
 
 func IsPath(v string) bool {

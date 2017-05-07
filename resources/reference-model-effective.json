@@ -1,0 +1,124 @@
+{
+  "version": 1,
+  "net": "default",
+  "dns": [
+    "host"
+  ],
+  "hostname": "owncloud.example.org",
+  "inject_hosts": true,
+  "services": {
+    "extbuild": {
+      "image": "local/docker-build-dockerfile:20170402215320",
+      "build": {
+        "context": "./docker-build"
+      },
+      "entrypoint": [
+        "/bin/sh",
+        "-c",
+        "echo hello from selfbuilt container"
+      ]
+    },
+    "extservice": {
+      "image": "docker://alpine:latest",
+      "environment": {
+        "ADDITIONALVAR": "val",
+        "MYBASEVAR": "baseval",
+        "MYVAR1": "MYVALFROMFILE_OVERWRITTEN_IN_ENVIRONMENT",
+        "MYVAR2": "MYEXTVALFROMFILE2",
+        "MYVAR3": "MYBASEVALFROMFILE3"
+      },
+      "ports": {
+        "25-tcp": "25",
+        "80-tcp": "80",
+        "9000-tcp": "9000"
+      },
+      "mounts": {
+        "/data": "datavol",
+        "/etc/additional.cf": "additional-cf",
+        "/etc/target.cf": "reference-model-base-conf-cf"
+      }
+    },
+    "myservice": {
+      "image": "docker://owncloud:latest",
+      "entrypoint": [
+        "entrypoint.sh"
+      ],
+      "environment": {
+        "HTTP_HOST": "myservice.example.org",
+        "HTTP_PORT": "5550",
+        "MYVAR1": "MYVALFROMFILE_OVERWRITTEN_IN_ENVIRONMENT",
+        "MYVAR2": "MYEXTVALFROMFILE2"
+      },
+      "ports": {
+        "3330-udp": "2220",
+        "3331-udp": "2221",
+        "5550-tcp": "3330",
+        "5551-tcp": "3331",
+        "5552-tcp": "3332",
+        "5553-tcp": "3333",
+        "5554-tcp": "3334",
+        "5555-tcp": "3335"
+      }
+    },
+    "selfbuilt1": {
+      "image": "local/docker-build-dockerfile:20170402215320",
+      "build": {
+        "context": "./docker-build"
+      },
+      "entrypoint": [
+        "/bin/sh",
+        "-c",
+        "echo hello from selfbuilt container"
+      ]
+    },
+    "selfbuilt2": {
+      "image": "local/docker-build-dockerfile-alternate:20170507144444",
+      "build": {
+        "context": "./docker-build",
+        "dockerfile": "Dockerfile-alternate",
+        "args": {
+          "buildno": "1",
+          "featureenabled": "true",
+          "myprop": "myvalue"
+        }
+      },
+      "entrypoint": [
+        "/bin/sh",
+        "-c",
+        "echo hello from selfbuilt container"
+      ]
+    }
+  },
+  "volumes": {
+    "additional-cf": {
+      "source": "./additional.cf",
+      "kind": "host",
+      "readonly": false
+    },
+    "datavol": {
+      "source": "./volumes/datavol",
+      "kind": "host",
+      "readonly": false
+    },
+    "reference-model-base-conf-cf": {
+      "source": "./reference-model-base/conf.cf",
+      "kind": "host",
+      "readonly": false
+    },
+    "volume-etc-hello": {
+      "source": "./volumes/volume-etc-hello",
+      "kind": "host",
+      "readonly": false
+    },
+    "volume-var-www-html": {
+      "source": "./volumes/volume-var-www-html",
+      "kind": "host",
+      "readonly": false
+    }
+  },
+  "shared_keys": {
+    "http/myservice.example.org": "myservice:5550"
+  },
+  "shared_keys_overridable": false,
+  "stop_grace_period": "15s"
+}

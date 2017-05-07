@@ -72,7 +72,9 @@ func (self *Images) fetchImage(name string, pullPolicy PullPolicy) (r *ImageMeta
 	}
 	var stderr bytes.Buffer
 	c := exec.Command("rkt", "fetch", "--pull-policy="+string(pullPolicy), "--insecure-options="+insecOpt, name)
-	c.SysProcAttr = &syscall.SysProcAttr{Credential: &syscall.Credential{Uid: self.fetchAs.Uid, Gid: self.fetchAs.Gid}}
+	if self.fetchAs != nil {
+		c.SysProcAttr = &syscall.SysProcAttr{Credential: &syscall.Credential{Uid: self.fetchAs.Uid, Gid: self.fetchAs.Gid}}
+	}
 	if pullPolicy == PULL_NEVER {
 		c.Stderr = &stderr
 	} else {
@@ -119,6 +121,9 @@ func (self *Images) buildImage(imgName string, b *ServiceBuildDescriptor) (img *
 	c := exec.Command("docker", "build", "-t", imgName, "--rm", filepath.Dir(imgFile))
 	c.Stdout = os.Stdout // TODO: write to log
 	c.Stderr = os.Stderr
+	if err = c.Run(); err != nil {
+		return
+	}
 	if err = self.importLocalDockerImage(imgName); err != nil {
 		return
 	}
@@ -135,7 +140,9 @@ func (self *Images) toImageName(s *ServiceDescriptor) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("%s: %s", df, err)
 		}
-		return "local/" + utils.ToId(self.localImagePrefix+"-"+s.Build.Context) + ":" + st.ModTime().Format("20060102150405"), nil
+		uniqName := self.localImagePrefix + "-" + utils.RelPath(df, self.filePath)
+		tag := st.ModTime().Format("20060102150405")
+		return "local/" + utils.ToId(uniqName) + ":" + tag, nil
 	}
 }
 
@@ -153,9 +160,12 @@ func (self *Images) importLocalDockerImage(imgName string) error {
 		return fmt.Errorf("Cannot create temp file: %s", err)
 	}
 	defer removeFile(dockerImgFile.Name())
-	if _, err = utils.ExecCommand("docker", "save", "--output", dockerImgFile.Name(), imgName); err != nil {
-		return fmt.Errorf("Cannot export docker image %q: %s", imgName, err)
+	self.debug.Println("Exporting docker image to file...")
+	out, err := exec.Command("docker", "save", "--output", dockerImgFile.Name(), imgName).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("Cannot export docker image %q: %s. %s", imgName, err, out)
 	}
+	self.debug.Println("Converting docker image to ACI...")
 	d2aCfg := docker2aci.FileConfig{
 		CommonConfig: docker2aci.CommonConfig{
 			Squash:      true,
@@ -173,10 +183,11 @@ func (self *Images) importLocalDockerImage(imgName string) error {
 	if len(aciLayerPaths) < 1 {
 		return fmt.Errorf("Multiple ACI files returned by docker2aci: %s", err)
 	}
+	self.debug.Println("Importing ACI file...")
 	var stderr bytes.Buffer
 	c := exec.Command("rkt", "prepare", "--quiet=true", "--insecure-options=image", aciLayerPaths[0])
 	c.Stderr = &stderr
-	out, err := c.Output()
+	out, err = c.Output()
 	if err != nil {
 		return fmt.Errorf("Cannot import converted docker image: %s. %s", err, stderr.String())
 	}

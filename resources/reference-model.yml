@@ -8,32 +8,30 @@ services:
       - "3330-3335:5550-5555"
       - "2220-2221:3330-3331/udp"
     env_file:
-      - ./my.env
+      - ./extended.env
     environment:
-      MYVARA: valA
-      MYVARB: valB
+      MYVAR1: MYVALFROMFILE_OVERWRITTEN_IN_ENVIRONMENT
       HTTP_HOST: myservice.example.org
       HTTP_PORT: 5550
   extservice:
     extends:
-      file: ./extended-service/extservice.yml
-      service: extservice
+      file: ./reference-model-base/reference-model-base.yml
+      service: baseservice
     env_file:
-      - ./additional.env
+      - ./extended.env
     environment:
-      - MYVAR1=val1
-      - MYVAR2=val2
+      - MYVAR1=MYVALFROMFILE_OVERWRITTEN_IN_ENVIRONMENT
+      - ADDITIONALVAR=val
     ports:
       - "80"
       - "25:25"
     volumes:
       - "./additional.cf:/etc/additional.cf"
-      - "datavol:/data"
   selfbuilt1:
-    build: .
+    build: ./docker-build
   selfbuilt2:
     build:
-      context: .
+      context: ./docker-build
       dockerfile: Dockerfile-alternate
       args:
         buildno: 1
@@ -41,8 +39,8 @@ services:
         featureenabled: true
   extbuild:
     extends:
-      file: ./extended-service/extservice.yml
-      service: extselfbuilt
+      file: ./reference-model-base/reference-model-base.yml
+      service: baseselfbuilt
     stop_grace_period: "15s"
 volumes:
   datavol:

@@ -142,12 +142,17 @@ func (self *Descriptors) addFetchedImages(pod *PodDescriptor, pullPolicy PullPol
 
 func resolveEnvFiles(d *PodDescriptor) {
 	for _, s := range d.Services {
+		env := map[string]string{}
 		for _, f := range s.EnvFile {
 			for k, v := range readEnvFile(utils.AbsPath(f, d.File)) {
-				s.Environment[k] = v
+				env[k] = v
 			}
 		}
+		for k, v := range s.Environment {
+			env[k] = v
+		}
 		s.EnvFile = nil
+		s.Environment = env
 	}
 }
 

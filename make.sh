@@ -8,6 +8,8 @@
 GOPATH="$(dirname "$0")"
 export GOPATH="$(cd "$GOPATH" && pwd)" || exit 1
 
+set -x
+
 # Format code
 gofmt -w "$GOPATH/src/github.com/mgoltzsche"
 
@@ -19,7 +21,7 @@ go get gopkg.in/appc/docker2aci.v0 &&
 go install github.com/mgoltzsche/rkt-compose &&
 
 # Build and run tests
-go test github.com/mgoltzsche/model &&
+sudo GOPATH="$GOPATH" go test github.com/mgoltzsche/model &&
 go test github.com/mgoltzsche/checks &&
 
 # Run
