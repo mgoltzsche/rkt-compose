@@ -45,7 +45,7 @@ else
 		  sudo "$GOPATH/bin/rkt-compose" run --name=examplepod --uuid-file=/var/run/examplepod.uuid test-resources/example-docker-compose-images.yml
 
 		Run consul and example pod registered at consul:
-		  sudo "$GOPATH/bin/rkt-compose" run --name=consul --uuid-file=/var/run/consul.uuid test-resources/consul.json &
+		  sudo "$GOPATH/bin/rkt-compose" run --name=consul --default-publish-ip=172.16.28.1 --uuid-file=/var/run/consul.uuid test-resources/consul.json &
 		  sudo "$GOPATH/bin/rkt-compose" run --name=examplepod --uuid-file=/var/run/examplepod.uuid --consul-ip=172.16.28.1 test-resources/example-docker-compose-images.yml
 	EOF
 fi

@@ -99,7 +99,21 @@ func (self *Descriptors) loadDescriptor(filePath string) (r *PodDescriptor) {
 				v.Environment = map[string]string{}
 			}
 			if v.Ports == nil {
-				v.Ports = map[string]string{}
+				v.Ports = map[string]*PortBindingDescriptor{}
+			} else {
+				for k, p := range v.Ports {
+					if p == nil {
+						p = &PortBindingDescriptor{}
+						v.Ports[k] = p
+					}
+					if p.Port == 0 {
+						port, err := strconv.ParseInt(k[0:strings.Index(k, "-")], 10, 64)
+						if err != nil || port < 0 || port > 65536 {
+							panic("Invalid port key format: " + k)
+						}
+						p.Port = uint16(port)
+					}
+				}
 			}
 			if v.Mounts == nil {
 				v.Mounts = map[string]string{}
@@ -265,7 +279,7 @@ func (self *Descriptors) resolveExtensions(d *PodDescriptor, visited map[string]
 			}
 			s.EnvFile = envFiles
 			completeMap(extServ.Environment, s.Environment)
-			completeMap(extServ.Ports, s.Ports)
+			completePorts(extServ.Ports, s.Ports)
 			m := map[string]string{}
 			for t, v := range extServ.Mounts {
 				if isPath(v) {
@@ -298,6 +312,14 @@ func (self *Descriptors) resolveExtensions(d *PodDescriptor, visited map[string]
 }
 
 func completeMap(src, dest map[string]string) {
+	for k, v := range src {
+		if _, ok := dest[k]; !ok {
+			dest[k] = v
+		}
+	}
+}
+
+func completePorts(src, dest map[string]*PortBindingDescriptor) {
 	for k, v := range src {
 		if _, ok := dest[k]; !ok {
 			dest[k] = v
@@ -412,8 +434,8 @@ func (self *Descriptors) transformDockerCompose(c *dockerCompose, r *PodDescript
 	}
 }
 
-func toPorts(p []string, path string) map[string]string {
-	r := map[string]string{}
+func toPorts(p []string, path string) map[string]*PortBindingDescriptor {
+	r := map[string]*PortBindingDescriptor{}
 	for _, e := range p {
 		sp := strings.Split(e, "/")
 		if len(sp) > 2 {
@@ -427,34 +449,28 @@ func toPorts(p []string, path string) map[string]string {
 		if len(s) > 3 {
 			panic(fmt.Sprintf("Invalid port entry %q at %s", e, path))
 		}
-		var hostIP, hostPortExpr, destPortExpr string
+		var hostIP, hostPortExpr, podPortExpr string
 		switch len(s) {
 		case 1:
 			hostPortExpr = s[0]
-			destPortExpr = hostPortExpr
+			podPortExpr = hostPortExpr
 		case 2:
 			hostPortExpr = s[0]
-			destPortExpr = s[1]
+			podPortExpr = s[1]
 		case 3:
 			hostIP = s[0]
 			hostPortExpr = s[1]
-			destPortExpr = s[2]
+			podPortExpr = s[2]
 		}
 		hostFrom, hostTo := toPortRange(hostPortExpr, path)
-		destFrom, destTo := toPortRange(destPortExpr, path)
-		rangeSize := destTo - destFrom
+		podFrom, podTo := toPortRange(podPortExpr, path)
+		rangeSize := podTo - podFrom
 		if (hostTo - hostFrom) != rangeSize {
 			panic(fmt.Sprintf("Port %q's range size differs between host and destination at %s", e, path))
 		}
 		for i := 0; i <= rangeSize; i++ {
-			portName := strconv.Itoa(destFrom+i) + "-" + prot
-			hostPort := strconv.Itoa(hostFrom + i)
-			if hostIP == "" {
-				r[portName] = hostPort
-			} else {
-				r[portName] = hostIP + ":" + hostPort
-			}
-			//r[portName] = &HostPortDescriptor{hostIP, uint16(hostFrom + i)}
+			portName := strconv.Itoa(podFrom+i) + "-" + prot
+			r[portName] = &PortBindingDescriptor{hostIP, uint16(hostFrom + i)}
 		}
 	}
 	return r

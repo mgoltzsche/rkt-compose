@@ -23,9 +23,10 @@ type GlobalOptions struct {
 
 type RunOptions struct {
 	PodFile                string        `param:"PODFILE,"`
-	UuidFile               string        `opt:"uuid-file,,Pod UUID file. If provided last container is removed on container start"`
+	UUIDFile               string        `opt:"uuid-file,,Pod UUID file. If provided last container is removed on container start"`
 	Name                   string        `opt:"name,,Pod name. Used for service discovery and as default hostname"`
 	DefaultVolumeDirectory string        `opt:"default-volume-dir,./volumes,Default volume base directory"`
+	DefaultPublishIP       string        `opt:"default-publish-ip,,IP used to publish pod ports"`
 	ConsulIP               string        `opt:"consul-ip,,Sets consul IP and enables service discovery"`
 	ConsulApiPort          string        `opt:"consul-api-port,8500,Consul API port"`
 	ConsulDatacenter       string        `opt:"consul-datacenter,dc1,Consul datacenter"`
@@ -119,7 +120,12 @@ func runPod() error {
 	if len(runOpts.Name) > 0 {
 		descr.Name = runOpts.Name
 	}
-	var listener launcher.LifecycleListenerFactory
+	var cfg = &launcher.Config{}
+	cfg.Pod = descr
+	cfg.UUIDFile = runOpts.UUIDFile
+	cfg.DefaultPublishIP = runOpts.DefaultPublishIP
+	cfg.Debug = debugLog
+	cfg.Error = errorLog
 	if len(runOpts.ConsulIP) > 0 {
 		// Enable consul service discovery
 		globalNS := "service." + runOpts.ConsulDatacenter + ".consul"
@@ -130,12 +136,13 @@ func runPod() error {
 			descr.Dns = append([]string{runOpts.ConsulIP}, descr.Dns...)
 		}
 		descr.DnsSearch = append([]string{localNS, globalNS}, descr.DnsSearch...)
-		listener, err = launcher.NewConsulLifecycleFactory("http://"+runOpts.ConsulIP+":"+runOpts.ConsulApiPort, runOpts.ConsulCheckTtl, debugLog)
+		listener, err := launcher.NewConsulLifecycleFactory("http://"+runOpts.ConsulIP+":"+runOpts.ConsulApiPort, runOpts.ConsulCheckTtl, debugLog)
 		if err != nil {
 			return err
 		}
+		cfg.ListenerFactory = listener
 	}
-	l, err := launcher.NewPodLauncher(descr, runOpts.UuidFile, listener, debugLog, errorLog)
+	l, err := launcher.NewPodLauncher(cfg)
 	if err != nil {
 		return err
 	}

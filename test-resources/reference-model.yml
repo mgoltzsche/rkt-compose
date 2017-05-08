@@ -5,7 +5,7 @@ services:
     hostname: owncloud.example.org
     entrypoint: entrypoint.sh
     ports:
-      - "3330-3335:5550-5555"
+      - "3330-3333:5555-5558"
       - "2220-2221:3330-3331/udp"
     env_file:
       - ./extended.env

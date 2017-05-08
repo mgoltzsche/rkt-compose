@@ -28,6 +28,7 @@ func TestRead(t *testing.T) {
 	j := strings.Trim(descr.JSON(), "\n")
 	if j != expectedSimple.contents {
 		t.Errorf("Unexpected simple descriptor for file %q.\n\n%s", inFile, diff(expectedSimple.contents, j))
+		return
 	}
 	err = models.Complete(descr, PULL_NEW)
 	if err != nil {
@@ -36,7 +37,7 @@ func TestRead(t *testing.T) {
 	}
 	j = strings.Trim(descr.JSON(), "\n")
 	if j != expectedEnhanced.contents {
-		t.Errorf("Unexpected enhanced descriptor for file %q.\n\n%s", expectedEnhanced.file, diff(expectedEnhanced.contents, j))
+		t.Errorf("Unexpected effective descriptor for file %q.\n\n%s", expectedEnhanced.file, diff(expectedEnhanced.contents, j))
 	}
 }
 

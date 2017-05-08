@@ -26,8 +26,12 @@
         "MYVAR1": "MYVALFROMFILE_OVERWRITTEN_IN_ENVIRONMENT"
       },
       "ports": {
-        "25-tcp": "25",
-        "80-tcp": "80"
+        "25-tcp": {
+          "port": 25
+        },
+        "80-tcp": {
+          "port": 80
+        }
       },
       "mounts": {
         "/etc/additional.cf": "./additional.cf"
@@ -47,14 +51,24 @@
         "MYVAR1": "MYVALFROMFILE_OVERWRITTEN_IN_ENVIRONMENT"
       },
       "ports": {
-        "3330-udp": "2220",
-        "3331-udp": "2221",
-        "5550-tcp": "3330",
-        "5551-tcp": "3331",
-        "5552-tcp": "3332",
-        "5553-tcp": "3333",
-        "5554-tcp": "3334",
-        "5555-tcp": "3335"
+        "3330-udp": {
+          "port": 2220
+        },
+        "3331-udp": {
+          "port": 2221
+        },
+        "5555-tcp": {
+          "port": 3330
+        },
+        "5556-tcp": {
+          "port": 3331
+        },
+        "5557-tcp": {
+          "port": 3332
+        },
+        "5558-tcp": {
+          "port": 3333
+        }
       }
     },
     "selfbuilt1": {

@@ -49,36 +49,48 @@ type ContainerNetwork struct {
 }
 
 type PodLauncher struct {
-	descriptor  *model.PodDescriptor
-	listener    LifecycleListener
-	podUUID     string
-	podUUIDFile string
-	cmd         *exec.Cmd
-	mutex       *sync.Mutex
-	once        *sync.Once
-	err         error
-	wait        sync.WaitGroup
-	debug       log.Logger
-	info        log.Logger
-	error       log.Logger
+	descriptor       *model.PodDescriptor
+	listener         LifecycleListener
+	podUUID          string
+	podUUIDFile      string
+	defaultPublishIP string
+	cmd              *exec.Cmd
+	mutex            *sync.Mutex
+	once             *sync.Once
+	err              error
+	wait             sync.WaitGroup
+	debug            log.Logger
+	info             log.Logger
+	error            log.Logger
 }
 
-func NewPodLauncher(pod *model.PodDescriptor, uuidFile string, listenerFactory LifecycleListenerFactory, debug log.Logger, error log.Logger) (*PodLauncher, error) {
+type Config struct {
+	Pod              *model.PodDescriptor
+	UUIDFile         string
+	DefaultPublishIP string
+	ListenerFactory  LifecycleListenerFactory
+	Debug            log.Logger
+	Info             log.Logger
+	Error            log.Logger
+}
+
+func NewPodLauncher(cfg *Config) (*PodLauncher, error) {
 	r := &PodLauncher{}
-	r.debug = debug
-	r.error = error
-	r.descriptor = pod
-	if uuidFile != "" {
-		uuidFile, err := filepath.Abs(uuidFile)
+	r.debug = cfg.Debug
+	r.error = cfg.Error
+	r.descriptor = cfg.Pod
+	r.defaultPublishIP = cfg.DefaultPublishIP
+	if cfg.UUIDFile != "" {
+		uuidFile, err := filepath.Abs(cfg.UUIDFile)
 		if err != nil {
 			return nil, fmt.Errorf("Invalid pod UUID file: %s", err)
 		}
 		r.podUUIDFile = uuidFile
 	}
-	if listenerFactory == nil {
+	if cfg.ListenerFactory == nil {
 		r.listener = &NilListener{}
 	} else {
-		r.listener = listenerFactory(pod)
+		r.listener = cfg.ListenerFactory(cfg.Pod)
 	}
 	r.mutex = &sync.Mutex{}
 	r.once = &sync.Once{}
@@ -151,7 +163,7 @@ func (ctx *PodLauncher) Stop() (err error) {
 func (ctx *PodLauncher) prepare() error {
 	ctx.debug.Println("Preparing pod...")
 	ctx.removeLastPod()
-	prepareArgs, err := toRktPrepareArgs(ctx.descriptor)
+	prepareArgs, err := ctx.toRktPrepareArgs(ctx.descriptor)
 	if err != nil {
 		return err
 	}
@@ -316,7 +328,7 @@ func toRktRunArgs(pod *model.PodDescriptor) *args {
 	return r
 }
 
-func toRktPrepareArgs(pod *model.PodDescriptor) ([]string, error) {
+func (ctx *PodLauncher) toRktPrepareArgs(pod *model.PodDescriptor) ([]string, error) {
 	r := newArgs("prepare", "--quiet=true")
 	if containsDockerImage(pod) {
 		r.add("--insecure-options=image")
@@ -328,14 +340,20 @@ func toRktPrepareArgs(pod *model.PodDescriptor) ([]string, error) {
 		readOnly := strconv.AppendBool([]byte{}, v.Readonly)
 		r.add(fmt.Sprintf("--volume=%s,source=%s,kind=%s,readOnly=%s", k, absFile(v.Source, pod), v.Kind, readOnly))
 	}
-	// TODO: maybe move ports to top level
 	for _, s := range pod.Services {
 		for portName, p := range s.Ports {
-			portArg := "--port=" + portName
-			if len(p) > 0 {
-				portArg += ":" + p
+			portArg := portName
+			if p.IP == "" {
+				if ctx.defaultPublishIP != "" {
+					portArg += ":" + ctx.defaultPublishIP
+				}
+			} else {
+				portArg += ":" + p.IP
 			}
-			r.add(portArg)
+			if p.Port > 0 {
+				portArg += ":" + strconv.Itoa(int(p.Port))
+			}
+			r.add("--port=" + portArg)
 		}
 	}
 	for name, s := range pod.Services {

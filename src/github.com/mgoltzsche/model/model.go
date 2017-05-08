@@ -37,17 +37,17 @@ type PodDescriptor struct {
 }
 
 type ServiceDescriptor struct {
-	Extends      *ServiceDescriptorExtension `json:"extends,omitempty"`
-	FetchedImage *ImageMetadata              `json:"-"`
-	Image        string                      `json:"image,omitempty"`
-	Build        *ServiceBuildDescriptor     `json:"build,omitempty"`
-	Entrypoint   []string                    `json:"entrypoint,omitempty"`
-	Command      []string                    `json:"command,omitempty"`
-	EnvFile      []string                    `json:"env_file,omitempty"`
-	Environment  map[string]string           `json:"environment,omitempty"`
-	HealthCheck  *HealthCheckDescriptor      `json:"healthcheck,omitempty"`
-	Ports        map[string]string           `json:"ports,omitempty"`
-	Mounts       map[string]string           `json:"mounts,omitempty"`
+	Extends      *ServiceDescriptorExtension       `json:"extends,omitempty"`
+	FetchedImage *ImageMetadata                    `json:"-"`
+	Image        string                            `json:"image,omitempty"`
+	Build        *ServiceBuildDescriptor           `json:"build,omitempty"`
+	Entrypoint   []string                          `json:"entrypoint,omitempty"`
+	Command      []string                          `json:"command,omitempty"`
+	EnvFile      []string                          `json:"env_file,omitempty"`
+	Environment  map[string]string                 `json:"environment,omitempty"`
+	HealthCheck  *HealthCheckDescriptor            `json:"healthcheck,omitempty"`
+	Ports        map[string]*PortBindingDescriptor `json:"ports,omitempty"`
+	Mounts       map[string]string                 `json:"mounts,omitempty"`
 }
 
 type ServiceBuildDescriptor struct {
@@ -61,9 +61,9 @@ type ServiceDescriptorExtension struct {
 	Service string `json:"service"`
 }
 
-type HostPortDescriptor struct {
-	HostIP   string `json:"ip,omitempty"`
-	HostPort uint16 `json:"port"`
+type PortBindingDescriptor struct {
+	IP   string `json:"ip,omitempty"`
+	Port uint16 `json:"port"`
 }
 
 type VolumeDescriptor struct {
