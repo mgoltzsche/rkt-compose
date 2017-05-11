@@ -1,6 +1,8 @@
 {
   "version": 1,
-  "net": "default",
+  "net": [
+    "default"
+  ],
   "dns": [
     "host"
   ],
@@ -13,7 +15,9 @@
         "context": "./docker-build"
       },
       "entrypoint": [
-        "/bin/sh",
+        "/bin/sh"
+      ],
+      "command": [
         "-c",
         "echo hello from selfbuilt container"
       ]
@@ -82,7 +86,9 @@
         "context": "./docker-build"
       },
       "entrypoint": [
-        "/bin/sh",
+        "/bin/sh"
+      ],
+      "command": [
         "-c",
         "echo hello from selfbuilt container"
       ]
@@ -99,7 +105,9 @@
         }
       },
       "entrypoint": [
-        "/bin/sh",
+        "/bin/sh"
+      ],
+      "command": [
         "-c",
         "echo hello from selfbuilt container"
       ]

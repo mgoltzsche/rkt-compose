@@ -25,6 +25,8 @@ type RunOptions struct {
 	PodFile                string        `param:"PODFILE,"`
 	UUIDFile               string        `opt:"uuid-file,,Pod UUID file. If provided last container is removed on container start"`
 	Name                   string        `opt:"name,,Pod name. Used for service discovery and as default hostname"`
+	Net                    []string      `opt:"net,,List of networks"`
+	Dns                    []string      `opt:"dns,,List of DNS server IPs"`
 	DefaultVolumeDirectory string        `opt:"default-volume-dir,./volumes,Default volume base directory"`
 	DefaultPublishIP       string        `opt:"default-publish-ip,,IP used to publish pod ports"`
 	ConsulIP               string        `opt:"consul-ip,,Sets consul IP and enables service discovery"`
@@ -119,6 +121,12 @@ func runPod() error {
 	}
 	if len(runOpts.Name) > 0 {
 		descr.Name = runOpts.Name
+	}
+	if len(runOpts.Net) > 0 {
+		descr.Net = runOpts.Net
+	}
+	if len(runOpts.Dns) > 0 {
+		descr.Dns = runOpts.Dns
 	}
 	var cfg = &launcher.Config{}
 	cfg.Pod = descr

@@ -12,7 +12,7 @@ func NewPodDescriptor() *PodDescriptor {
 	r.Services = map[string]*ServiceDescriptor{}
 	r.Volumes = map[string]*VolumeDescriptor{}
 	r.InjectHosts = true
-	r.Net = "default"
+	r.Net = []string{"default"}
 	r.Dns = []string{"host"}
 	r.DnsSearch = []string{}
 	return r
@@ -22,7 +22,7 @@ type PodDescriptor struct {
 	File                      string                        `json:"-"`
 	Version                   uint8                         `json:"version"`
 	Name                      string                        `json:"name,omitempty"`
-	Net                       string                        `json:"net,omitempty"`
+	Net                       []string                      `json:"net,omitempty"`
 	Dns                       []string                      `json:"dns,omitempty"`
 	DnsSearch                 []string                      `json:"dns_search,omitempty"`
 	Hostname                  string                        `json:"hostname,omitempty"`

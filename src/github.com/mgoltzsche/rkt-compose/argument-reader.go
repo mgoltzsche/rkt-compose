@@ -178,6 +178,7 @@ func toOptions(options interface{}) map[string]*option {
 }
 
 func toOption(defaultValue string, descr string, f reflect.Value) *option {
+	init := true
 	var o *option
 	switch f.Interface().(type) {
 	case string:
@@ -186,18 +187,29 @@ func toOption(defaultValue string, descr string, f reflect.Value) *option {
 		o = &option{descr, defaultValue, f, setBool}
 	case time.Duration:
 		o = &option{descr, defaultValue, f, setDuration}
+	case []string:
+		init = false
+		f.Set(reflect.ValueOf([]string{}))
+		o = &option{descr, defaultValue, f, setStringArray}
 	default:
 		panic("Unsupported option field type. Supported types are string, bool and time.Duration")
 	}
-	err := o.set(o.value, defaultValue)
-	if err != nil {
-		panic("Invalid default value on option of type " + f.Type().String())
+	if init {
+		err := o.set(o.value, defaultValue)
+		if err != nil {
+			panic("Invalid default value on option of type " + f.Type().String())
+		}
 	}
 	return o
 }
 
 func setString(value reflect.Value, str string) error {
 	value.SetString(str)
+	return nil
+}
+
+func setStringArray(value reflect.Value, str string) error {
+	value.Set(reflect.Append(value, reflect.ValueOf(str)))
 	return nil
 }
 

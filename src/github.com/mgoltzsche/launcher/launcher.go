@@ -1,6 +1,7 @@
 package launcher
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -123,13 +124,18 @@ func (ctx *PodLauncher) Start() (err error) {
 		return
 	}
 	runArgs := runArgsBuilder.add(ctx.podUUID).toSlice()
-	ctx.debug.Println("Starting pod...")
+	ctx.debug.Println("Starting pod: rkt ", strings.Join(runArgs, "\n  "))
 	ctx.wait.Add(1)
 	ctx.cmd = exec.Command("rkt", runArgs...)
 	go ctx.run()
 	info, err := ctx.containerInfo()
 	if err != nil {
 		ctx.terminate()
+		if ctx.err == nil {
+			return fmt.Errorf("start status: %s", err)
+		} else {
+			return fmt.Errorf("rkt run: %s", ctx.err)
+		}
 		return fmt.Errorf("start status: %s", err)
 	}
 	if err = ctx.listener.Start(ctx.podUUID, info.Networks[0].IP); err != nil {
@@ -161,12 +167,12 @@ func (ctx *PodLauncher) Stop() (err error) {
 }
 
 func (ctx *PodLauncher) prepare() error {
-	ctx.debug.Println("Preparing pod...")
 	ctx.removeLastPod()
 	prepareArgs, err := ctx.toRktPrepareArgs(ctx.descriptor)
 	if err != nil {
 		return err
 	}
+	ctx.debug.Println("Preparing pod: rkt ", strings.Join(prepareArgs, "\n  "))
 	c := exec.Command("rkt", prepareArgs...)
 	c.SysProcAttr = &syscall.SysProcAttr{Setpgid: true} // Run in separate process group to be able to shutdown health checks before container
 	c.Stderr = os.Stderr
@@ -241,10 +247,11 @@ func (ctx *PodLauncher) containerInfo() (r *ContainerInfo, err error) {
 	for i := 0; i < 40; i++ { // Loop is workaround since initial command call may list no networks
 		r = &ContainerInfo{}
 		cmd := exec.Command("rkt", "status", "--format=json", "--wait-ready=5s", ctx.podUUID)
-		cmd.Stderr = os.Stderr
+		var buf bytes.Buffer
+		cmd.Stderr = &buf
 		out, e := cmd.Output()
-		if err != nil {
-			err = fmt.Errorf("Failed to request rkt pod status: %s", e)
+		if e != nil {
+			err = fmt.Errorf("Failed to request rkt pod status: %s. %s", e, buf)
 			return
 		}
 		err = json.Unmarshal(out, r)
@@ -312,8 +319,10 @@ func toRktRunArgs(pod *model.PodDescriptor) *args {
 	}
 	r := newArgs(
 		"run-prepared",
-		"--hostname="+strings.Trim(hostname+"."+pod.Domainname, "."),
-		"--net="+pod.Net)
+		"--hostname="+strings.Trim(hostname+"."+pod.Domainname, "."))
+	for _, net := range pod.Net {
+		r.add("--net=" + net)
+	}
 	for _, dnsIP := range pod.Dns {
 		r.add("--dns=" + dnsIP)
 	}
@@ -350,9 +359,7 @@ func (ctx *PodLauncher) toRktPrepareArgs(pod *model.PodDescriptor) ([]string, er
 			} else {
 				portArg += ":" + p.IP
 			}
-			if p.Port > 0 {
-				portArg += ":" + strconv.Itoa(int(p.Port))
-			}
+			portArg += ":" + strconv.Itoa(int(p.Port))
 			r.add("--port=" + portArg)
 		}
 	}

@@ -32,9 +32,6 @@ sudo GOPATH="$GOPATH" go test github.com/mgoltzsche/model
 if [ "$1" = run ]; then
 	set -x
 	sudo "$GOPATH/bin/rkt-compose" --verbose=true run --name=examplepod --uuid-file=/var/run/examplepod.uuid test-resources/example-docker-compose-images.yml
-
-	#sudo "$GOPATH/bin/rkt-compose" run --name=consul --uuid-file=/var/run/consul.uuid test-resources/consul.json &
-	#sudo "$GOPATH/bin/rkt-compose" run --name=testpod --uuid-file=/var/run/pod.uuid --consul-ip=172.16.28.1 test-resources/example-docker-compose-images.yml
 else
 	cat <<-EOF
 		___________________________________________________
@@ -44,8 +41,8 @@ else
 		Run example pod:
 		  sudo "$GOPATH/bin/rkt-compose" run --name=examplepod --uuid-file=/var/run/examplepod.uuid test-resources/example-docker-compose-images.yml
 
-		Run consul and example pod registered at consul:
-		  sudo "$GOPATH/bin/rkt-compose" run --name=consul --default-publish-ip=172.16.28.1 --uuid-file=/var/run/consul.uuid test-resources/consul.json &
-		  sudo "$GOPATH/bin/rkt-compose" run --name=examplepod --uuid-file=/var/run/examplepod.uuid --consul-ip=172.16.28.1 test-resources/example-docker-compose-images.yml
+		Run consul and example pod registered at consul (requires free IP: 172.16.28.2):
+		  sudo "$GOPATH/bin/rkt-compose" run --name=consul --uuid-file=/var/run/consul.uuid --net=default:IP=172.16.28.2 test-resources/consul.yml &
+		  sudo "$GOPATH/bin/rkt-compose" run --name=examplepod --uuid-file=/var/run/example.uuid --consul-ip=172.16.28.2 test-resources/example-docker-compose-images.yml
 	EOF
 fi

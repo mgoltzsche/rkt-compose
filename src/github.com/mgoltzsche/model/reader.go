@@ -57,8 +57,11 @@ func (self *Descriptors) Complete(pod *PodDescriptor, pullPolicy PullPolicy) (er
 	self.addFetchedImages(pod, pullPolicy)
 	self.addImageVolumes(pod)
 	for _, s := range pod.Services {
-		if len(s.Entrypoint) == 0 {
-			s.Entrypoint = s.FetchedImage.Exec
+		if len(s.Entrypoint) == 0 && len(s.FetchedImage.Exec) > 0 {
+			s.Entrypoint = []string{s.FetchedImage.Exec[0]}
+			if len(s.Command) == 0 {
+				s.Command = s.FetchedImage.Exec[1:]
+			}
 		}
 		if len(s.Image) == 0 {
 			s.Image = s.FetchedImage.Name
@@ -100,20 +103,6 @@ func (self *Descriptors) loadDescriptor(filePath string) (r *PodDescriptor) {
 			}
 			if v.Ports == nil {
 				v.Ports = map[string]*PortBindingDescriptor{}
-			} else {
-				for k, p := range v.Ports {
-					if p == nil {
-						p = &PortBindingDescriptor{}
-						v.Ports[k] = p
-					}
-					if p.Port == 0 {
-						port, err := strconv.ParseInt(k[0:strings.Index(k, "-")], 10, 64)
-						if err != nil || port < 0 || port > 65536 {
-							panic("Invalid port key format: " + k)
-						}
-						p.Port = uint16(port)
-					}
-				}
 			}
 			if v.Mounts == nil {
 				v.Mounts = map[string]string{}
@@ -328,8 +317,6 @@ func completePorts(src, dest map[string]*PortBindingDescriptor) {
 }
 
 func validate(d *PodDescriptor) {
-	assertTrue(len(d.Net) > 0, "empty", ".net")
-	assertTrue(len(d.Dns) > 0, "empty", ".dns")
 	assertTrue(d.Services != nil && len(d.Services) > 0, "empty", ".services")
 	for k, v := range d.Services {
 		kPath := ".services." + k
