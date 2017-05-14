@@ -88,6 +88,7 @@ func (self *Descriptors) loadDescriptor(filePath string) (r *PodDescriptor) {
 		}
 		r.File = filePath
 		// Set defaults
+
 		for _, v := range r.Services {
 			if v.Entrypoint == nil {
 				v.Entrypoint = []string{}
@@ -382,7 +383,11 @@ func (self *Descriptors) transformDockerCompose(c *dockerCompose, r *PodDescript
 			s.Extends = &ServiceDescriptorExtension{v.Extends.File, v.Extends.Service}
 		}
 		if len(v.Image) > 0 {
-			s.Image = "docker://" + v.Image
+			if v.Build == nil {
+				s.Image = "docker://" + v.Image
+			} else {
+				s.Image = v.Image
+			}
 		}
 		s.Build = toServiceBuildDescriptor(v.Build, p+".build")
 		s.Entrypoint = toStringArray(v.Entrypoint, p+".entrypoint")
