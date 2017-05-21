@@ -24,6 +24,9 @@
     },
     "extservice": {
       "image": "docker://alpine:latest",
+      "entrypoint": [
+        "/bin/sh"
+      ],
       "environment": {
         "ADDITIONALVAR": "val",
         "MYBASEVAR": "baseval",

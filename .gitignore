@@ -3,3 +3,4 @@ pkg/
 src/gopkg.in
 src/github.com/appc/
 src/github.com/hashicorp/
+test-resources/volumes/

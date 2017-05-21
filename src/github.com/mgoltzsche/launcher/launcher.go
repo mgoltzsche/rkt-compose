@@ -114,7 +114,10 @@ func (ctx *PodLauncher) Start() (err error) {
 		return fmt.Errorf("launcher: pod already running: %s", ctx.podUUID)
 	}
 	ctx.err = nil
-	runArgsBuilder := toRktRunArgs(ctx.descriptor)
+	runArgsBuilder, err := toRktRunArgs(ctx.descriptor)
+	if err != nil {
+		return
+	}
 	err = ctx.createVolumeDirectories()
 	if err != nil {
 		return
@@ -238,8 +241,9 @@ func (ctx *PodLauncher) invokeTerminationListener() {
 	}
 }
 
-func (ctx *PodLauncher) Wait() {
+func (ctx *PodLauncher) Wait() error {
 	ctx.wait.Wait()
+	return ctx.err
 }
 
 func (ctx *PodLauncher) containerInfo() (r *ContainerInfo, err error) {
@@ -302,7 +306,7 @@ func (ctx *PodLauncher) createVolumeDirectories() error {
 		volFile := absFile(vol.Source, ctx.descriptor)
 		_, err := os.Stat(volFile)
 		if os.IsNotExist(err) {
-			if err := os.MkdirAll(volFile, 0770); err != nil {
+			if err := os.MkdirAll(volFile, 0755); err != nil {
 				return fmt.Errorf("Failed to create volume directories: %s", err)
 			}
 		} else if err != nil {
@@ -312,14 +316,20 @@ func (ctx *PodLauncher) createVolumeDirectories() error {
 	return nil
 }
 
-func toRktRunArgs(pod *model.PodDescriptor) *args {
+func toRktRunArgs(pod *model.PodDescriptor) (*args, error) {
 	hostname := pod.Hostname
+	domainname := pod.Domainname
 	if len(hostname) == 0 {
 		hostname = pod.Name
 	}
+	dotPos := strings.Index(hostname, ".")
+	if dotPos != -1 {
+		domainname = hostname[dotPos+1:]
+		hostname = hostname[:dotPos]
+	}
 	r := newArgs(
 		"run-prepared",
-		"--hostname="+strings.Trim(hostname+"."+pod.Domainname, "."))
+		"--hostname="+hostname+"."+domainname)
 	for _, net := range pod.Net {
 		r.add("--net=" + net)
 	}
@@ -329,12 +339,31 @@ func toRktRunArgs(pod *model.PodDescriptor) *args {
 	for _, dnsSearch := range pod.DnsSearch {
 		r.add("--dns-search=" + dnsSearch)
 	}
-	if pod.InjectHosts {
-		for name := range pod.Services {
-			r.add("--hosts-entry=127.0.0.1=" + name)
+	// TODO: Set domainname properly and always set additional hostnames.
+	// Currently domainname cannot be set properly since /etc/hosts entry with FQDN must be mapped to public pod IP which is not known externally
+	// and not properly set by rkt when --hostname is FQDN or --dns-domain parameter is passed. See:
+	//   https://github.com/rkt/rkt/issues/2042
+	//   https://github.com/rkt/rkt/issues/2223
+	// The current solution to set domainname works for centos/fedora as long as not --hosts-entry parameter is added
+	// since this makes rkt insert the default hosts file where FQDN is mapped to 127.0.0.1.
+	// To make it work on both alpine and centos /etc/hosts must be generated and mounted as volume to the pod and no --hosts-entry parameter passed.
+	if domainname != "" {
+		if len(pod.Dns) > 0 && pod.Dns[0] == "host" {
+			return nil, fmt.Errorf("Cannot set domainname when dns is set to 'host'")
+		}
+		r.add("--dns-domain=" + domainname)
+		// TODO: Enable the following line to make it work on alpine etc. If enabled currently it doesn't work on centos/fedora.
+		//       Checkout sudo rkt run --interactive --hostname=ldap.example.org  docker://alpine:latest --exec=/bin/hostname -- -f
+		//r.add("--hosts-entry=127.0.0.1=" + hostname + "." + domainname + " " + hostname)
+	} else {
+		if pod.InjectHosts {
+			r.add("--hosts-entry=127.0.0.1=" + hostname)
+			for name := range pod.Services {
+				r.add("--hosts-entry=127.0.0.1=" + name)
+			}
 		}
 	}
-	return r
+	return r, nil
 }
 
 func (ctx *PodLauncher) toRktPrepareArgs(pod *model.PodDescriptor) ([]string, error) {

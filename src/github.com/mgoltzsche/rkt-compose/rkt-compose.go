@@ -160,8 +160,7 @@ func runPod() error {
 	if err != nil {
 		return err
 	}
-	l.Wait()
-	return nil
+	return l.Wait()
 }
 
 func handleSignals(l *launcher.PodLauncher) {

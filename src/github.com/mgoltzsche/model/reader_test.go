@@ -51,6 +51,7 @@ func diff(expected, actual string) string {
 			break
 		}
 	}
+	fmt.Printf(actual)
 	start := int(math.Max(0, float64(pos-5)))
 	expectedEnd := int(math.Min(float64(len(expectedSegs)), float64(start+11)))
 	actualEnd := int(math.Min(float64(len(actualSegs)), float64(start+11)))
