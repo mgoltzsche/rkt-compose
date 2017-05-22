@@ -54,6 +54,7 @@ type PodLauncher struct {
 	listener         LifecycleListener
 	podUUID          string
 	podUUIDFile      string
+	hostsFile        string
 	defaultPublishIP string
 	cmd              *exec.Cmd
 	mutex            *sync.Mutex
@@ -114,7 +115,7 @@ func (ctx *PodLauncher) Start() (err error) {
 		return fmt.Errorf("launcher: pod already running: %s", ctx.podUUID)
 	}
 	ctx.err = nil
-	runArgsBuilder, err := toRktRunArgs(ctx.descriptor)
+	runArgsBuilder, err := ctx.toRktRunArgs()
 	if err != nil {
 		return
 	}
@@ -122,6 +123,11 @@ func (ctx *PodLauncher) Start() (err error) {
 	if err != nil {
 		return
 	}
+	err = ctx.generateHostsTempFile()
+	if err != nil {
+		return err
+	}
+	defer os.Remove(ctx.hostsFile)
 	err = ctx.prepare()
 	if err != nil {
 		return
@@ -171,7 +177,7 @@ func (ctx *PodLauncher) Stop() (err error) {
 
 func (ctx *PodLauncher) prepare() error {
 	ctx.removeLastPod()
-	prepareArgs, err := ctx.toRktPrepareArgs(ctx.descriptor)
+	prepareArgs, err := ctx.toRktPrepareArgs()
 	if err != nil {
 		return err
 	}
@@ -316,20 +322,11 @@ func (ctx *PodLauncher) createVolumeDirectories() error {
 	return nil
 }
 
-func toRktRunArgs(pod *model.PodDescriptor) (*args, error) {
-	hostname := pod.Hostname
-	domainname := pod.Domainname
-	if len(hostname) == 0 {
-		hostname = pod.Name
-	}
-	dotPos := strings.Index(hostname, ".")
-	if dotPos != -1 {
-		domainname = hostname[dotPos+1:]
-		hostname = hostname[:dotPos]
-	}
+func (ctx *PodLauncher) toRktRunArgs() (*args, error) {
+	pod := ctx.descriptor
 	r := newArgs(
 		"run-prepared",
-		"--hostname="+hostname+"."+domainname)
+		"--hostname="+strings.TrimRight(pod.Hostname+"."+pod.Domainname, "."))
 	for _, net := range pod.Net {
 		r.add("--net=" + net)
 	}
@@ -339,34 +336,19 @@ func toRktRunArgs(pod *model.PodDescriptor) (*args, error) {
 	for _, dnsSearch := range pod.DnsSearch {
 		r.add("--dns-search=" + dnsSearch)
 	}
-	// TODO: Set domainname properly and always set additional hostnames.
-	// Currently domainname cannot be set properly since /etc/hosts entry with FQDN must be mapped to public pod IP which is not known externally
-	// and not properly set by rkt when --hostname is FQDN or --dns-domain parameter is passed. See:
-	//   https://github.com/rkt/rkt/issues/2042
-	//   https://github.com/rkt/rkt/issues/2223
-	// The current solution to set domainname works for centos/fedora as long as not --hosts-entry parameter is added
-	// since this makes rkt insert the default hosts file where FQDN is mapped to 127.0.0.1.
-	// To make it work on both alpine and centos /etc/hosts must be generated and mounted as volume to the pod and no --hosts-entry parameter passed.
-	if domainname != "" {
+	if pod.Domainname != "" {
 		if len(pod.Dns) > 0 && pod.Dns[0] == "host" {
 			return nil, fmt.Errorf("Cannot set domainname when dns is set to 'host'")
 		}
-		r.add("--dns-domain=" + domainname)
-		// TODO: Enable the following line to make it work on alpine etc. If enabled currently it doesn't work on centos/fedora.
-		//       Checkout sudo rkt run --interactive --hostname=ldap.example.org  docker://alpine:latest --exec=/bin/hostname -- -f
-		//r.add("--hosts-entry=127.0.0.1=" + hostname + "." + domainname + " " + hostname)
-	} else {
-		if pod.InjectHosts {
-			r.add("--hosts-entry=127.0.0.1=" + hostname)
-			for name := range pod.Services {
-				r.add("--hosts-entry=127.0.0.1=" + name)
-			}
-		}
+		r.add("--dns-domain=" + pod.Domainname)
+		// sudo rkt run --interactive --hostname=ldap.example.org  docker://alpine:latest --exec=/bin/hostname -- -f
 	}
 	return r, nil
 }
 
-func (ctx *PodLauncher) toRktPrepareArgs(pod *model.PodDescriptor) ([]string, error) {
+func (ctx *PodLauncher) toRktPrepareArgs() ([]string, error) {
+	pod := ctx.descriptor
+	hostsVolName := filepath.Base(ctx.hostsFile)
 	r := newArgs("prepare", "--quiet=true")
 	if containsDockerImage(pod) {
 		r.add("--insecure-options=image")
@@ -378,6 +360,7 @@ func (ctx *PodLauncher) toRktPrepareArgs(pod *model.PodDescriptor) ([]string, er
 		readOnly := strconv.AppendBool([]byte{}, v.Readonly)
 		r.add(fmt.Sprintf("--volume=%s,source=%s,kind=%s,readOnly=%s", k, absFile(v.Source, pod), v.Kind, readOnly))
 	}
+	r.add("--volume=" + hostsVolName + ",kind=host,source=" + ctx.hostsFile + ",readOnly=true")
 	for _, s := range pod.Services {
 		for portName, p := range s.Ports {
 			portArg := portName
@@ -401,6 +384,7 @@ func (ctx *PodLauncher) toRktPrepareArgs(pod *model.PodDescriptor) ([]string, er
 		for target, volName := range s.Mounts {
 			r.add(fmt.Sprintf("--mount=volume=%s,target=%s", volName, target))
 		}
+		r.add("--mount=volume=" + hostsVolName + ",target=/etc/hosts")
 		if len(s.Entrypoint) == 0 {
 			return nil, fmt.Errorf("No entrypoint defined in service %q", name)
 		}
@@ -411,6 +395,44 @@ func (ctx *PodLauncher) toRktPrepareArgs(pod *model.PodDescriptor) ([]string, er
 		r.add("---")
 	}
 	return r.toSlice(), nil
+}
+
+func (ctx *PodLauncher) generateHostsTempFile() error {
+	// TODO: Set domainname properly and always set additional hostnames.
+	// Currently domainname cannot be set properly with rkt args since /etc/hosts entry with FQDN should be mapped to public pod IP which is not known externally
+	// and not properly set by rkt when --hostname is FQDN or --dns-domain parameter is passed. See:
+	//   https://github.com/rkt/rkt/issues/2042
+	//   https://github.com/rkt/rkt/issues/2223
+	// The current solution to set domainname works for centos/fedora as long as no --hosts-entry parameter is added
+	// since this lets rkt insert the default hosts file where FQDN is mapped to 127.0.0.1. Since it is not set as the entry's 1st name the FQDN/domainname cannot be derived properly within the pod.
+	// To make it work on both alpine and centos /etc/hosts must be generated and mounted as volume to the pod and no --hosts-entry parameter passed.
+	pod := ctx.descriptor
+	names := strings.TrimRight(pod.Hostname+"."+pod.Domainname, ".")
+	if names != pod.Hostname {
+		names += " " + pod.Hostname
+	}
+	if pod.InjectHosts {
+		for name := range pod.Services {
+			if name != pod.Hostname {
+				names += " " + name
+			}
+		}
+	}
+	hosts := "# Generated by rkt-compose\n127.0.0.1 " + names + " localhost localhost.domain localhost4 localhost4.localdomain4\n\n"
+	hosts += "::1 ip6-localhost ip6-loopback localhost6 localhost6.localdomain6\n"
+	hosts += "fe00::0 ip6-localnet\nff00::0 ip6-mcastprefix\nff02::1 ip6-allnodes\nff02::2 ip6-allrouters\nff02::3 ip6-allhosts\n"
+	f, err := ioutil.TempFile("", "pod-hosts-")
+	if err != nil {
+		return fmt.Errorf("Cannot create temporary hosts file: %s", err)
+	}
+	if _, err := f.Write([]byte(hosts)); err != nil {
+		return fmt.Errorf("Cannot write temporary hosts file: %s", err)
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("Cannot close temporary hosts file: %s", err)
+	}
+	ctx.hostsFile = f.Name()
+	return nil
 }
 
 func absFile(p string, pod *model.PodDescriptor) string {
