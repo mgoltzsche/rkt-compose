@@ -326,7 +326,7 @@ func (ctx *PodLauncher) toRktRunArgs() (*args, error) {
 	pod := ctx.descriptor
 	r := newArgs(
 		"run-prepared",
-		"--hostname="+strings.TrimRight(pod.Hostname+"."+pod.Domainname, "."))
+		"--hostname="+pod.Hostname)
 	for _, net := range pod.Net {
 		r.add("--net=" + net)
 	}
