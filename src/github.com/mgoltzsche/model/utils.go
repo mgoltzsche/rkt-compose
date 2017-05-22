@@ -71,5 +71,5 @@ func relPath(p, basePath string) string {
 }
 
 func isPath(v string) bool {
-	return "." == v || (len(v) > 0 && v[0:1] == "/") || (len(v) > 1 && v[0:2] == "./")
+	return "." == v || (len(v) > 0 && v[0:1] == "/") || (len(v) > 1 && v[0:2] == "./") || (len(v) > 2 && v[0:3] == "../")
 }
