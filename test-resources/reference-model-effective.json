@@ -6,8 +6,7 @@
   "dns": [
     "host"
   ],
-  "hostname": "owncloud",
-  "domainname": "example.org",
+  "hostname": "owncloud.example.org",
   "inject_hosts": true,
   "services": {
     "extbuild": {

@@ -324,9 +324,10 @@ func (ctx *PodLauncher) createVolumeDirectories() error {
 
 func (ctx *PodLauncher) toRktRunArgs() (*args, error) {
 	pod := ctx.descriptor
+	hostname, domainname := ctx.descriptor.HostAndDomainName()
 	r := newArgs(
 		"run-prepared",
-		"--hostname="+pod.Hostname)
+		"--hostname="+hostname)
 	for _, net := range pod.Net {
 		r.add("--net=" + net)
 	}
@@ -340,7 +341,7 @@ func (ctx *PodLauncher) toRktRunArgs() (*args, error) {
 		if len(pod.Dns) > 0 && pod.Dns[0] == "host" {
 			return nil, fmt.Errorf("Cannot set domainname when dns is set to 'host'")
 		}
-		r.add("--dns-domain=" + pod.Domainname)
+		r.add("--dns-domain=" + domainname)
 		// sudo rkt run --interactive --hostname=ldap.example.org  docker://alpine:latest --exec=/bin/hostname -- -f
 	}
 	return r, nil

@@ -52,7 +52,6 @@ func (self *Descriptors) Complete(pod *PodDescriptor, pullPolicy PullPolicy) (er
 		}
 	}()
 	self.resolveExtensions(pod, map[string]bool{})
-	deriveHostAndDomainName(pod)
 	resolveEnvFiles(pod)
 	fileMountsToVolumes(pod)
 	self.addFetchedImages(pod, pullPolicy)
@@ -141,18 +140,6 @@ func (self *Descriptors) addFetchedImages(pod *PodDescriptor, pullPolicy PullPol
 		img, err := imgs.Image(s)
 		panicOnError(err)
 		s.FetchedImage = img
-	}
-}
-
-func deriveHostAndDomainName(d *PodDescriptor) {
-	hostname := d.Hostname
-	if hostname == "" {
-		d.Hostname = d.Name
-	}
-	dotPos := strings.Index(d.Hostname, ".")
-	if dotPos != -1 {
-		d.Domainname = d.Hostname[dotPos+1:]
-		d.Hostname = d.Hostname[:dotPos]
 	}
 }
 

@@ -3,6 +3,7 @@ package model
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -16,6 +17,20 @@ func NewPodDescriptor() *PodDescriptor {
 	r.Dns = []string{"host"}
 	r.DnsSearch = []string{}
 	return r
+}
+
+func (d *PodDescriptor) HostAndDomainName() (string, string) {
+	hostname := d.Hostname
+	domainname := d.Domainname
+	if hostname == "" {
+		hostname = d.Name
+	}
+	dotPos := strings.Index(hostname, ".")
+	if dotPos != -1 {
+		domainname = hostname[dotPos+1:]
+		hostname = hostname[:dotPos]
+	}
+	return hostname, domainname
 }
 
 type PodDescriptor struct {
