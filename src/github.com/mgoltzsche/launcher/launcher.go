@@ -363,8 +363,8 @@ func (ctx *PodLauncher) toRktPrepareArgs() ([]string, error) {
 	}
 	r.add("--volume=" + hostsVolName + ",kind=host,source=" + ctx.hostsFile + ",readOnly=true")
 	for _, s := range pod.Services {
-		for portName, p := range s.Ports {
-			portArg := portName
+		for _, p := range s.Ports {
+			portArg := strconv.Itoa(int(p.Target)) + "-" + p.Protocol
 			if p.IP == "" {
 				if ctx.defaultPublishIP != "" {
 					portArg += ":" + ctx.defaultPublishIP
@@ -372,7 +372,9 @@ func (ctx *PodLauncher) toRktPrepareArgs() ([]string, error) {
 			} else {
 				portArg += ":" + p.IP
 			}
-			portArg += ":" + strconv.Itoa(int(p.Port))
+			if p.Published > 0 {
+				portArg += ":" + strconv.Itoa(int(p.Published))
+			}
 			r.add("--port=" + portArg)
 		}
 	}

@@ -103,7 +103,7 @@ func (self *Descriptors) loadDescriptor(filePath string) (r *PodDescriptor) {
 				v.Environment = map[string]string{}
 			}
 			if v.Ports == nil {
-				v.Ports = map[string]*PortBindingDescriptor{}
+				v.Ports = []*PortBindingDescriptor{}
 			}
 			if v.Mounts == nil {
 				v.Mounts = map[string]string{}
@@ -269,7 +269,7 @@ func (self *Descriptors) resolveExtensions(d *PodDescriptor, visited map[string]
 			}
 			s.EnvFile = envFiles
 			completeMap(extServ.Environment, s.Environment)
-			completePorts(extServ.Ports, s.Ports)
+			s.Ports = extendPorts(extServ.Ports, s.Ports)
 			m := map[string]string{}
 			for t, v := range extServ.Mounts {
 				if isPath(v) {
@@ -309,12 +309,18 @@ func completeMap(src, dest map[string]string) {
 	}
 }
 
-func completePorts(src, dest map[string]*PortBindingDescriptor) {
-	for k, v := range src {
-		if _, ok := dest[k]; !ok {
-			dest[k] = v
+func extendPorts(base, ext []*PortBindingDescriptor) []*PortBindingDescriptor {
+	r := []*PortBindingDescriptor{}
+	m := map[string]bool{}
+	for _, p := range ext {
+		m[strconv.Itoa(int(p.Target))+"-"+p.Protocol] = true
+	}
+	for _, p := range base {
+		if m[strconv.Itoa(int(p.Target))+"-"+p.Protocol] == false {
+			r = append(r, p)
 		}
 	}
+	return append(r, ext...)
 }
 
 func validate(d *PodDescriptor) {
@@ -426,8 +432,8 @@ func (self *Descriptors) transformDockerCompose(c *dockerCompose, r *PodDescript
 	}
 }
 
-func toPorts(p []string, path string) map[string]*PortBindingDescriptor {
-	r := map[string]*PortBindingDescriptor{}
+func toPorts(p []string, path string) []*PortBindingDescriptor {
+	r := []*PortBindingDescriptor{}
 	for _, e := range p {
 		sp := strings.Split(e, "/")
 		if len(sp) > 2 {
@@ -460,9 +466,8 @@ func toPorts(p []string, path string) map[string]*PortBindingDescriptor {
 		if (hostTo - hostFrom) != rangeSize {
 			panic(fmt.Sprintf("Port %q's range size differs between host and destination at %s", e, path))
 		}
-		for i := 0; i <= rangeSize; i++ {
-			portName := strconv.Itoa(podFrom+i) + "-" + prot
-			r[portName] = &PortBindingDescriptor{hostIP, uint16(hostFrom + i)}
+		for d := 0; d <= rangeSize; d++ {
+			r = append(r, &PortBindingDescriptor{uint16(podFrom + d), uint16(hostFrom + d), hostIP, prot})
 		}
 	}
 	return r
@@ -621,6 +626,7 @@ func toString(v interface{}, ctx string) string {
 	}
 }
 
+// See https://docs.docker.com/compose/compose-file/
 type dockerCompose struct {
 	Version  string
 	Services map[string]*dcServiceDescriptor
