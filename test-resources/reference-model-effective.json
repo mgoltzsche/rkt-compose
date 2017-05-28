@@ -1,7 +1,7 @@
 {
   "version": 1,
   "net": [
-    "default"
+    "compose-bridge"
   ],
   "dns": [
     "host"

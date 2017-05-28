@@ -52,6 +52,9 @@ func (self *Descriptors) Complete(pod *PodDescriptor, pullPolicy PullPolicy) (er
 		}
 	}()
 	self.resolveExtensions(pod, map[string]bool{})
+	/*if len(pod.Net) == 0 {
+		pod.Net = []string{"compose-bridge"}
+	}*/
 	resolveEnvFiles(pod)
 	fileMountsToVolumes(pod)
 	self.addFetchedImages(pod, pullPolicy)

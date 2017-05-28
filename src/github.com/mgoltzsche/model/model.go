@@ -13,7 +13,7 @@ func NewPodDescriptor() *PodDescriptor {
 	r.Services = map[string]*ServiceDescriptor{}
 	r.Volumes = map[string]*VolumeDescriptor{}
 	r.InjectHosts = true
-	r.Net = []string{"default"}
+	r.Net = []string{}
 	r.Dns = []string{"host"}
 	r.DnsSearch = []string{}
 	return r

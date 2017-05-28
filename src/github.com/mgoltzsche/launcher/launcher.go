@@ -19,6 +19,23 @@ import (
 	"time"
 )
 
+const rktNetworkConfig = `
+{
+    "name": "compose-bridge",
+    "type": "bridge",
+    "bridge": "rkt-compose",
+    "ipMasq": true,
+    "isGateway": true,
+    "ipam": {
+        "type": "host-local",
+        "subnet": "10.3.0.0/24",
+        "routes": [
+                { "dst": "0.0.0.0/0" }
+        ]
+    }
+}
+`
+
 type LifecycleListenerFactory func(pod *model.PodDescriptor) LifecycleListener
 
 type LifecycleListener interface {
@@ -55,6 +72,7 @@ type PodLauncher struct {
 	podUUID          string
 	podUUIDFile      string
 	hostsFile        string
+	rktConfDir       string
 	defaultPublishIP string
 	cmd              *exec.Cmd
 	mutex            *sync.Mutex
@@ -115,6 +133,12 @@ func (ctx *PodLauncher) Start() (err error) {
 		return fmt.Errorf("launcher: pod already running: %s", ctx.podUUID)
 	}
 	ctx.err = nil
+	/*ctx.rktConfDir, err = ctx.writeRktDefaultNetworkConfig()
+	if err != nil {
+		return err
+	}
+	//defer os.RemoveAll(ctx.rktConfDir)
+	*/
 	runArgsBuilder, err := ctx.toRktRunArgs()
 	if err != nil {
 		return
@@ -327,6 +351,7 @@ func (ctx *PodLauncher) toRktRunArgs() (*args, error) {
 	hostname, domainname := ctx.descriptor.HostAndDomainName()
 	r := newArgs(
 		"run-prepared",
+		//		"--user-config="+ctx.rktConfDir,
 		"--hostname="+hostname)
 	for _, net := range pod.Net {
 		r.add("--net=" + net)
@@ -342,7 +367,6 @@ func (ctx *PodLauncher) toRktRunArgs() (*args, error) {
 			return nil, fmt.Errorf("Cannot set domainname when dns is set to 'host'")
 		}
 		r.add("--dns-domain=" + domainname)
-		// sudo rkt run --interactive --hostname=ldap.example.org  docker://alpine:latest --exec=/bin/hostname -- -f
 	}
 	return r, nil
 }
@@ -436,6 +460,22 @@ func (ctx *PodLauncher) generateHostsTempFile() error {
 	}
 	ctx.hostsFile = f.Name()
 	return nil
+}
+
+func (ctx *PodLauncher) writeRktDefaultNetworkConfig() (string, error) {
+	tmpDir, err := ioutil.TempDir("", "pod-cfg-")
+	if err != nil {
+		return "", fmt.Errorf("Cannot create temp rkt config dir: %s", err)
+	}
+	err = os.Mkdir(filepath.Join(tmpDir, "net.d"), 775)
+	if err != nil {
+		return "", fmt.Errorf("Cannot create temp rkt config net.d dir: %s", err)
+	}
+	if err = ioutil.WriteFile(filepath.Join(tmpDir, "net.d", "10-compose-bridge.conf"), []byte(rktNetworkConfig), 444); err != nil {
+		os.RemoveAll(tmpDir)
+		return "", fmt.Errorf("Cannot write temporary rkt network config: %s", err)
+	}
+	return tmpDir, nil
 }
 
 func absFile(p string, pod *model.PodDescriptor) string {

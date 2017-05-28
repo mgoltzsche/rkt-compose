@@ -7,12 +7,15 @@
 	],
 	"services": {
 		"consul": {
-			"image": "docker://consul:0.8.1",
+			"image": "docker://consul:0.8.2",
 			"entrypoint": [
 				"/usr/local/bin/docker-entrypoint.sh", "agent", "-server", "-ui",
 				"-bootstrap-expect", "1", "-log-level", "info",
-				"-bind", "0.0.0.0", "-advertise", "-client", "0.0.0.0", "-recursor", "8.8.8.8"
+				"-bind", "0.0.0.0", "-client", "0.0.0.0", "-dns-port", "53", "-recursor", "8.8.8.8"
 			],
+			"environment": {
+				"CONSUL_ALLOW_PRIVILEGED_PORTS": ""
+			},
 			"volumes": {
 				"/consul/config": "volume-consul-config"
 			}
