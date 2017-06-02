@@ -4,7 +4,6 @@
     "host"
   ],
   "hostname": "owncloud.example.org",
-  "inject_hosts": true,
   "services": {
     "extbuild": {
       "extends": {
@@ -113,6 +112,5 @@
   "shared_keys": {
     "http/myservice.example.org": "myservice:5550"
   },
-  "shared_keys_overridable": false,
   "stop_grace_period": "15s"
 }

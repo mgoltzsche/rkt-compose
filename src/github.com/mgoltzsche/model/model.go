@@ -3,8 +3,7 @@ package model
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
-	"time"
+	"strconv"
 )
 
 func NewPodDescriptor() *PodDescriptor {
@@ -12,25 +11,10 @@ func NewPodDescriptor() *PodDescriptor {
 	r.Version = 1
 	r.Services = map[string]*ServiceDescriptor{}
 	r.Volumes = map[string]*VolumeDescriptor{}
-	r.InjectHosts = true
 	r.Net = []string{}
 	r.Dns = []string{"host"}
 	r.DnsSearch = []string{}
 	return r
-}
-
-func (d *PodDescriptor) HostAndDomainName() (string, string) {
-	hostname := d.Hostname
-	domainname := d.Domainname
-	if hostname == "" {
-		hostname = d.Name
-	}
-	dotPos := strings.Index(hostname, ".")
-	if dotPos != -1 {
-		domainname = hostname[dotPos+1:]
-		hostname = hostname[:dotPos]
-	}
-	return hostname, domainname
 }
 
 type PodDescriptor struct {
@@ -42,33 +26,33 @@ type PodDescriptor struct {
 	DnsSearch                 []string                      `json:"dns_search,omitempty"`
 	Hostname                  string                        `json:"hostname,omitempty"`
 	Domainname                string                        `json:"domainname,omitempty"`
-	InjectHosts               bool                          `json:"inject_hosts"`
+	DisableHostsInjection     BoolVal                       `json:"disable_hosts_injection,omitempty"`
 	Environment               map[string]string             `json:"environment,omitempty"`
 	Services                  map[string]*ServiceDescriptor `json:"services"`
 	Volumes                   map[string]*VolumeDescriptor  `json:"volumes,omitempty"`
 	SharedKeys                map[string]string             `json:"shared_keys,omitempty"`
-	SharedKeysOverrideAllowed bool                          `json:"shared_keys_overridable"`
-	StopGracePeriod           Duration                      `json:"stop_grace_period,omitempty"`
+	SharedKeysOverrideAllowed BoolVal                       `json:"shared_keys_overridable,omitempty"`
+	StopGracePeriod           string                        `json:"stop_grace_period,omitempty"`
 }
 
 type ServiceDescriptor struct {
-	Extends      *ServiceDescriptorExtension `json:"extends,omitempty"`
-	FetchedImage *ImageMetadata              `json:"-"`
-	Image        string                      `json:"image,omitempty"`
-	Build        *ServiceBuildDescriptor     `json:"build,omitempty"`
-	Entrypoint   []string                    `json:"entrypoint,omitempty"`
-	Command      []string                    `json:"command,omitempty"`
-	EnvFile      []string                    `json:"env_file,omitempty"`
-	Environment  map[string]string           `json:"environment,omitempty"`
-	HealthCheck  *HealthCheckDescriptor      `json:"healthcheck,omitempty"`
-	Ports        []*PortBindingDescriptor    `json:"ports,omitempty"`
-	Mounts       map[string]string           `json:"mounts,omitempty"`
+	Extends     *ServiceDescriptorExtension `json:"extends,omitempty"`
+	Image       string                      `json:"image,omitempty"`
+	Build       *ServiceBuildDescriptor     `json:"build,omitempty"`
+	Entrypoint  []string                    `json:"entrypoint,omitempty"`
+	Command     []string                    `json:"command,omitempty"`
+	EnvFile     []string                    `json:"env_file,omitempty"`
+	Environment map[string]string           `json:"environment,omitempty"`
+	HealthCheck *HealthCheckDescriptor      `json:"healthcheck,omitempty"`
+	Ports       []*PortBindingDescriptor    `json:"ports,omitempty"`
+	Mounts      map[string]string           `json:"mounts,omitempty"`
 }
 
 type ServiceBuildDescriptor struct {
-	Context    string            `json:"context,omitempty"`
-	Dockerfile string            `json:"dockerfile,omitempty"`
-	Args       map[string]string `json:"args,omitempty"`
+	Context    string `json:"context,omitempty"`
+	Dockerfile string `json:"dockerfile,omitempty"`
+	// TODO: use args
+	Args map[string]string `json:"args,omitempty"`
 }
 
 type ServiceDescriptorExtension struct {
@@ -77,48 +61,93 @@ type ServiceDescriptorExtension struct {
 }
 
 type PortBindingDescriptor struct {
-	Target    uint16 `json:"target"`
-	Published uint16 `json:"published,omitempty"`
-	IP        string `json:"ip,omitempty"`
-	Protocol  string `json:"protocol,omitempty"`
+	Target    NumberVal `json:"target"`
+	Published NumberVal `json:"published,omitempty"`
+	IP        string    `json:"ip,omitempty"`
+	Protocol  string    `json:"protocol,omitempty"`
 }
 
 type VolumeDescriptor struct {
-	Source   string `json:"source"`
-	Kind     string `json:"kind"`
-	Readonly bool   `json:"readonly"`
+	Source   string  `json:"source"`
+	Kind     string  `json:"kind,omitempty"`
+	Readonly BoolVal `json:"readonly,omitempty"`
 }
 
 type HealthCheckDescriptor struct {
-	Command  []string `json:"cmd,omitempty"`
-	Http     string   `json:"http,omitempty"`
-	Interval Duration `json:"interval"`
-	Timeout  Duration `json:"timeout,omitempty"`
-	Retries  uint8    `json:"retries"`
-	Disable  bool     `json:"disable"`
-}
-
-type Duration time.Duration
-
-func (d Duration) MarshalJSON() ([]byte, error) {
-	return []byte("\"" + time.Duration(d).String() + "\""), nil
-}
-
-func (d Duration) UnmarshalJSON(str []byte) error {
-	parsed, e := time.ParseDuration(string(str))
-	d = Duration(parsed)
-	return e
-}
-
-func ParseDuration(str string) (Duration, error) {
-	d, e := time.ParseDuration(str)
-	return Duration(d), e
+	Command  []string  `json:"cmd,omitempty"`
+	Http     string    `json:"http,omitempty"`
+	Interval string    `json:"interval,omitempty"`
+	Timeout  string    `json:"timeout,omitempty"`
+	Retries  NumberVal `json:"retries,omitempty"`
+	Disable  BoolVal   `json:"disable,omitempty"`
 }
 
 func (d *PodDescriptor) JSON() string {
 	j, e := json.MarshalIndent(d, "", "  ")
 	if e != nil {
-		panic(fmt.Sprintf("Failed to marshal pod model: %s", e))
+		panic("Failed to marshal effective pod model: " + e.Error())
 	}
 	return string(j)
+}
+
+type NumberVal string
+
+func (n NumberVal) MarshalJSON() ([]byte, error) {
+	r := string(n)
+	if r == "" {
+		r = "0"
+	} else {
+		_, err := strconv.Atoi(r)
+		if err != nil {
+			r = fmt.Sprintf("%q", r)
+		}
+	}
+	return []byte(r), nil
+}
+
+func (n *NumberVal) UnmarshalJSON(v []byte) error {
+	str := string(v)
+	_, err := strconv.Atoi(str)
+	if err == nil {
+		*n = NumberVal(str)
+	} else {
+		str, err = strconv.Unquote(str)
+		if err != nil {
+			return err
+		}
+		*n = NumberVal(str)
+	}
+	return nil
+}
+
+type BoolVal string
+
+func (b BoolVal) MarshalJSON() ([]byte, error) {
+	r := string(b)
+	switch r {
+	case "":
+		r = "false"
+	case "false":
+		r = "false"
+	case "true":
+		r = "true"
+	default:
+		r = fmt.Sprintf("%q", r)
+	}
+	return []byte(r), nil
+}
+
+func (b *BoolVal) UnmarshalJSON(v []byte) error {
+	str := string(v)
+	_, err := strconv.ParseBool(str)
+	if err == nil {
+		*b = BoolVal(str)
+	} else {
+		str, err = strconv.Unquote(str)
+		if err != nil {
+			return err
+		}
+		*b = BoolVal(str)
+	}
+	return nil
 }

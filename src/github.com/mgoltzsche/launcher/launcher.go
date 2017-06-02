@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/mgoltzsche/log"
-	"github.com/mgoltzsche/model"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -36,7 +35,7 @@ const rktNetworkConfig = `
 }
 `
 
-type LifecycleListenerFactory func(pod *model.PodDescriptor) LifecycleListener
+type LifecycleListenerFactory func(pod *Pod) LifecycleListener
 
 type LifecycleListener interface {
 	Start(podUUID, podIP string) error
@@ -67,7 +66,7 @@ type ContainerNetwork struct {
 }
 
 type PodLauncher struct {
-	descriptor       *model.PodDescriptor
+	descriptor       *Pod
 	listener         LifecycleListener
 	podUUID          string
 	podUUIDFile      string
@@ -85,7 +84,7 @@ type PodLauncher struct {
 }
 
 type Config struct {
-	Pod              *model.PodDescriptor
+	Pod              *Pod
 	UUIDFile         string
 	DefaultPublishIP string
 	ListenerFactory  LifecycleListenerFactory
@@ -340,7 +339,7 @@ func (ctx *PodLauncher) createVolumeDirectories() error {
 				return fmt.Errorf("Failed to create volume directories: %s", err)
 			}
 		} else if err != nil {
-			return fmt.Errorf("Cannot access volume: %s", err)
+			return fmt.Errorf("cannot access volume: %s", err)
 		}
 	}
 	return nil
@@ -348,11 +347,10 @@ func (ctx *PodLauncher) createVolumeDirectories() error {
 
 func (ctx *PodLauncher) toRktRunArgs() (*args, error) {
 	pod := ctx.descriptor
-	hostname, domainname := ctx.descriptor.HostAndDomainName()
 	r := newArgs(
 		"run-prepared",
 		//		"--user-config="+ctx.rktConfDir,
-		"--hostname="+hostname)
+		"--hostname="+pod.Hostname)
 	for _, net := range pod.Net {
 		r.add("--net=" + net)
 	}
@@ -364,9 +362,9 @@ func (ctx *PodLauncher) toRktRunArgs() (*args, error) {
 	}
 	if pod.Domainname != "" {
 		if len(pod.Dns) > 0 && pod.Dns[0] == "host" {
-			return nil, fmt.Errorf("Cannot set domainname when dns is set to 'host'")
+			return nil, fmt.Errorf("cannot set domainname when dns is set to 'host'")
 		}
-		r.add("--dns-domain=" + domainname)
+		r.add("--dns-domain=" + pod.Domainname)
 	}
 	return r, nil
 }
@@ -413,7 +411,7 @@ func (ctx *PodLauncher) toRktPrepareArgs() ([]string, error) {
 		}
 		r.add("--mount=volume=" + hostsVolName + ",target=/etc/hosts")
 		if len(s.Entrypoint) == 0 {
-			return nil, fmt.Errorf("No entrypoint defined in service %q", name)
+			return nil, fmt.Errorf("missing entrypoint in service %q", name)
 		}
 		r.add("--exec=" + s.Entrypoint[0])
 		r.add("--")
@@ -438,7 +436,7 @@ func (ctx *PodLauncher) generateHostsTempFile() error {
 	if names != pod.Hostname {
 		names += " " + pod.Hostname
 	}
-	if pod.InjectHosts {
+	if !pod.DisableHostsInjection {
 		for name := range pod.Services {
 			if name != pod.Hostname {
 				names += " " + name
@@ -478,7 +476,7 @@ func (ctx *PodLauncher) writeRktDefaultNetworkConfig() (string, error) {
 	return tmpDir, nil
 }
 
-func absFile(p string, pod *model.PodDescriptor) string {
+func absFile(p string, pod *Pod) string {
 	if len(p) > 0 && p[0:1] == "/" {
 		p = path.Clean(p)
 	} else {
@@ -487,7 +485,7 @@ func absFile(p string, pod *model.PodDescriptor) string {
 	return filepath.FromSlash(p)
 }
 
-func containsDockerImage(pod *model.PodDescriptor) bool {
+func containsDockerImage(pod *Pod) bool {
 	for _, s := range pod.Services {
 		if strings.Index(s.Image, "docker://") == 0 {
 			return true

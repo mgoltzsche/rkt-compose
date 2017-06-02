@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-type Service struct {
+type ConsulService struct {
 	ID                string
 	Name              string
 	Address           string
@@ -74,7 +74,7 @@ func (c *ConsulClient) CheckAvailability(maxRetries uint) bool {
 //       Alternative; Only do command checks within this starter and
 //       let consul perform HTTP checks on his own to save HTTP connections
 //       since every check done here must be propagated to consul via HTTP!
-func (c *ConsulClient) RegisterService(s *Service) error {
+func (c *ConsulClient) RegisterService(s *ConsulService) error {
 	j, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
 		return toError("unmarshallable service registration payload: %s", err)

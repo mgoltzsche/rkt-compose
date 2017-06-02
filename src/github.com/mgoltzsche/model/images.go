@@ -10,8 +10,8 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
-	"path"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"syscall"
 )
@@ -30,39 +30,27 @@ type UserGroup struct {
 }
 
 type Images struct {
-	localImagePrefix string
-	filePath         string
-	images           map[string]*ImageMetadata
-	pullPolicy       PullPolicy
-	fetchAs          *UserGroup
-	debug            log.Logger
+	images     map[string]*ImageMetadata
+	pullPolicy PullPolicy
+	fetchAs    *UserGroup
+	debug      log.Logger
 }
 
-func NewImages(d *PodDescriptor, pullPolicy PullPolicy, fetchAs *UserGroup, debug log.Logger) *Images {
-	return &Images{d.Name, d.File, map[string]*ImageMetadata{}, pullPolicy, fetchAs, debug}
+var toIdRegexp = regexp.MustCompile("[^a-z0-9]+")
+
+func NewImages(pullPolicy PullPolicy, fetchAs *UserGroup, debug log.Logger) *Images {
+	return &Images{map[string]*ImageMetadata{}, pullPolicy, fetchAs, debug}
 }
 
-func (self *Images) Image(s *ServiceDescriptor) (img *ImageMetadata, err error) {
-	imgName, err := self.toImageName(s)
-	if err != nil {
-		return
-	}
-	img = self.images[imgName]
-	if img == nil {
-		if s.Build == nil {
-			img, err = self.fetchImage(s.Image, self.pullPolicy)
-		} else {
-			img, err = self.buildImage(imgName, s.Build)
-		}
-		if err != nil {
-			return
-		}
-		self.images[imgName] = img
-	}
-	return
+func (self *Images) Image(name string) (*ImageMetadata, error) {
+	return self.fetchImage(name, self.pullPolicy)
 }
 
 func (self *Images) fetchImage(name string, pullPolicy PullPolicy) (r *ImageMetadata, err error) {
+	r = self.images[name]
+	if r != nil {
+		return
+	}
 	r = &ImageMetadata{"", []string{}, "", map[string]string{}, map[string]*ImagePort{}, map[string]string{}}
 	self.debug.Printf("Fetching image %q...", name)
 	insecOpt := ""
@@ -107,50 +95,34 @@ func (self *Images) fetchImage(name string, pullPolicy PullPolicy) (r *ImageMeta
 	for _, env := range app.Environment {
 		r.Environment[env.Name] = env.Value
 	}
+	self.images[name] = r
 	return
 }
 
-func (self *Images) buildImage(imgName string, b *ServiceBuildDescriptor) (img *ImageMetadata, err error) {
-	img, err = self.fetchImage(imgName, PULL_NEVER)
+func (self *Images) BuildImage(name, dockerFile, contextPath string) (img *ImageMetadata, err error) {
+	img, err = self.fetchImage(name, PULL_NEVER)
 	if err == nil {
 		return
 	}
-	imgFile := filepath.FromSlash(self.toImageDescriptorFile(b))
+	imgFile := filepath.FromSlash(dockerFile)
+	dockerFileDir := filepath.Dir(imgFile)
+	if contextPath == "" {
+		contextPath = dockerFileDir
+	}
 	self.debug.Printf("Building docker image from %q...", imgFile)
-	c := exec.Command("docker", "build", "-t", imgName, "--rm", filepath.Dir(imgFile))
+	c := exec.Command("docker", "build", "-t", name, "--rm", dockerFileDir)
+	c.Dir = contextPath
 	c.Stdout = os.Stdout // TODO: write to log
 	c.Stderr = os.Stderr
 	if err = c.Run(); err != nil {
 		return
 	}
-	if err = self.importLocalDockerImage(imgName); err != nil {
+	if err = self.importLocalDockerImage(name); err != nil {
 		return
 	}
-	img, err = self.fetchImage(imgName, PULL_NEVER)
+	img, err = self.fetchImage(name, PULL_NEVER)
+	self.images[name] = img
 	return
-}
-
-func (self *Images) toImageName(s *ServiceDescriptor) (string, error) {
-	if len(s.Image) > 0 {
-		return s.Image, nil
-	} else {
-		df := self.toImageDescriptorFile(s.Build)
-		st, err := os.Stat(df)
-		if err != nil {
-			return "", fmt.Errorf("%s: %s", df, err)
-		}
-		uniqName := self.localImagePrefix + "-" + relPath(df, self.filePath)
-		tag := st.ModTime().Format("20060102150405")
-		return "local/" + toId(uniqName) + ":" + tag, nil
-	}
-}
-
-func (self *Images) toImageDescriptorFile(b *ServiceBuildDescriptor) string {
-	df := b.Dockerfile
-	if df == "" {
-		df = "Dockerfile"
-	}
-	return absPath(path.Join(b.Context, df), self.filePath)
 }
 
 func (self *Images) importLocalDockerImage(imgName string) error {
@@ -195,6 +167,10 @@ func (self *Images) importLocalDockerImage(imgName string) error {
 		return fmt.Errorf("Cannot remove rkt pod %q used to import converted docker image: %s", cId, e)
 	}
 	return nil
+}
+
+func toId(v string) string {
+	return strings.Trim(toIdRegexp.ReplaceAllLiteralString(strings.ToLower(v), "-"), "-")
 }
 
 func removeFile(file string) {

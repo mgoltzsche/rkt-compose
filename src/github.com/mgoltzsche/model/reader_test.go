@@ -3,41 +3,33 @@ package model
 import (
 	"fmt"
 	"io/ioutil"
-	"log"
 	"math"
-	"os"
 	"strings"
 	"testing"
 )
 
-type expected struct {
-	file     string
-	contents string
-}
-
 func TestRead(t *testing.T) {
-	inFile := "../../../../test-resources/reference-model.yml"
-	expectedSimple := newExpected("../../../../test-resources/reference-model.json")
-	expectedEnhanced := newExpected("../../../../test-resources/reference-model-effective.json")
-	models := NewDescriptors("./volumes", nil, log.New(os.Stdout, "", 0))
-	descr, err := models.Descriptor(inFile)
-	if err != nil {
-		t.Errorf("models.Descriptor(%q) returned error: %s", inFile, err)
-		return
-	}
-	j := strings.Trim(descr.JSON(), "\n")
-	if j != expectedSimple.contents {
-		t.Errorf("Unexpected simple descriptor for file %q.\n\n%s", inFile, diff(expectedSimple.contents, j))
-		return
-	}
-	err = models.Complete(descr, PULL_NEW)
-	if err != nil {
-		t.Errorf("models.Complete(%q, PULL_NEW) returned error: %s", expectedSimple.file, err)
-		return
-	}
-	j = strings.Trim(descr.JSON(), "\n")
-	if j != expectedEnhanced.contents {
-		t.Errorf("Unexpected effective descriptor for file %q.\n\n%s", expectedEnhanced.file, diff(expectedEnhanced.contents, j))
+	for _, prefix := range []string{"../../../../test-resources/reference-model", "../../../../test-resources/consul"} {
+		dcFile := prefix + ".yml"
+		expectedFile := prefix + ".json"
+		expectedBytes, err := ioutil.ReadFile(expectedFile)
+		if err != nil {
+			t.Errorf("Failed to read assertion expectation file: %s", err)
+			return
+		}
+		expected := strings.Trim(string(expectedBytes), "\n")
+		models := NewDescriptors("./volumes")
+		// TODO: also try parsing json version
+		descr, err := models.Descriptor(dcFile)
+		if err != nil {
+			t.Errorf("models.Descriptor(%q) returned error: %s", dcFile, err)
+			return
+		}
+		j := strings.Trim(descr.JSON(), "\n")
+		if j != expected {
+			t.Errorf("Unexpected %q state.\n\n%s", dcFile, diff(expected, j))
+			return
+		}
 	}
 }
 
@@ -58,12 +50,4 @@ func diff(expected, actual string) string {
 	eDiff := strings.Join(expectedSegs[start:expectedEnd], "\n")
 	aDiff := strings.Join(actualSegs[start:actualEnd], "\n")
 	return fmt.Sprintf("Expected at line %d:\n%s\n\nBut was:\n%s\n", pos, eDiff, aDiff)
-}
-
-func newExpected(file string) *expected {
-	b, err := ioutil.ReadFile(file)
-	if err != nil {
-		panic("Failed to read assertion expectation file: " + err.Error())
-	}
-	return &expected{file, strings.Trim(string(b), "\n")}
 }

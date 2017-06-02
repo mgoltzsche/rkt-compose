@@ -57,7 +57,7 @@ func main() {
 
 var errorLog = log.NewStdLogger(os.Stderr)
 var debugLog = log.NewNopLogger()
-var fetchAs model.UserGroup
+var fetchImagesAs model.UserGroup
 
 func initContext() error {
 	// Init logger
@@ -101,35 +101,37 @@ func initContext() error {
 	if !hasGid {
 		return fmt.Errorf("User %s is not in group %s", globOpts.Uid, globOpts.Gid)
 	}
-	fetchAs.Uid = uint32(uid)
-	fetchAs.Gid = uint32(gid)
+	fetchImagesAs.Uid = uint32(uid)
+	fetchImagesAs.Gid = uint32(gid)
 	return nil
 }
 
-func runPod() error {
-	if err := initContext(); err != nil {
-		return err
+func runPod() (err error) {
+	if err = initContext(); err != nil {
+		return
 	}
-	models := model.NewDescriptors(runOpts.DefaultVolumeDirectory, &fetchAs, debugLog)
+	models := model.NewDescriptors(runOpts.DefaultVolumeDirectory)
+	imgs := model.NewImages(model.PULL_NEW, &fetchImagesAs, debugLog)
+	loader := launcher.NewLoader(models, imgs, runOpts.DefaultVolumeDirectory, debugLog)
 	descr, err := models.Descriptor(runOpts.PodFile)
 	if err != nil {
-		return err
-	}
-	err = models.Complete(descr, model.PULL_NEW)
-	if err != nil {
-		return err
+		return
 	}
 	if len(runOpts.Name) > 0 {
 		descr.Name = runOpts.Name
 	}
+	pod, err := loader.LoadPod(descr)
+	if err != nil {
+		return
+	}
 	if len(runOpts.Net) > 0 {
-		descr.Net = runOpts.Net
+		pod.Net = runOpts.Net
 	}
 	if len(runOpts.Dns) > 0 {
-		descr.Dns = runOpts.Dns
+		pod.Dns = runOpts.Dns
 	}
 	var cfg = &launcher.Config{}
-	cfg.Pod = descr
+	cfg.Pod = pod
 	cfg.UUIDFile = runOpts.UUIDFile
 	cfg.DefaultPublishIP = runOpts.DefaultPublishIP
 	cfg.Debug = debugLog
@@ -152,7 +154,7 @@ func runPod() error {
 	}
 	l, err := launcher.NewPodLauncher(cfg)
 	if err != nil {
-		return err
+		return
 	}
 	handleSignals(l)
 	defer l.MarkGarbageContainersQuiet()
@@ -183,7 +185,7 @@ func dumpPod() error {
 	if err != nil {
 		return err
 	}
-	models := model.NewDescriptors(dumpOpts.DefaultVolumeDirectory, &fetchAs, debugLog)
+	models := model.NewDescriptors(dumpOpts.DefaultVolumeDirectory)
 	descr, err := models.Descriptor(descrFile)
 	if err != nil {
 		return err

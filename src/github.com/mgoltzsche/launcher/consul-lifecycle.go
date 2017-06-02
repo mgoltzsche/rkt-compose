@@ -5,18 +5,17 @@ import (
 	"fmt"
 	"github.com/mgoltzsche/checks"
 	"github.com/mgoltzsche/log"
-	"github.com/mgoltzsche/model"
 	"time"
 )
 
 type ConsulLifecycle struct {
-	descriptor        *model.PodDescriptor
+	descriptor        *Pod
 	podUUID           string
 	client            *ConsulClient
 	checks            *checks.HealthChecks
 	minReportInterval time.Duration
 	checkTTL          time.Duration
-	service           *Service
+	service           *ConsulService
 	debug             log.Logger
 }
 
@@ -25,9 +24,9 @@ func NewConsulLifecycleFactory(address string, checkTTL time.Duration, debug log
 	if !client.CheckAvailability(30) {
 		return nil, errors.New("Consul unavailable")
 	}
-	return func(pod *model.PodDescriptor) LifecycleListener {
+	return func(pod *Pod) LifecycleListener {
 		// Health checks done within the launcher to be able to run commands within the container
-		minReportInterval := time.Duration(checkTTL / 2)
+		minReportInterval := checkTTL / 2
 		c := &ConsulLifecycle{pod, "", client, nil, minReportInterval, checkTTL, nil, debug}
 		return c
 	}, nil
@@ -43,7 +42,7 @@ func (c *ConsulLifecycle) Start(podUUID, podIP string) (err error) {
 	checkTTL := c.checkTTL.String()
 	checkNote := fmt.Sprintf("Aggregated checks (Interval: %s, TTL: %s)", c.minReportInterval.String(), checkTTL)
 	check := HeartBeat{checkNote, checkTTL}
-	service := &Service{c.serviceId(), c.descriptor.Name, podIP, tags, false, check}
+	service := &ConsulService{c.serviceId(), c.descriptor.Name, podIP, tags, false, check}
 	err = c.client.RegisterService(service)
 	if err != nil {
 		return
@@ -94,7 +93,7 @@ func (c *ConsulLifecycle) registerSharedKeys() error {
 	return nil
 }
 
-func toHealthChecks(pod *model.PodDescriptor, podUUID string, reporter checks.HealthReporter, minReportInterval time.Duration, debug log.Logger) (*checks.HealthChecks, error) {
+func toHealthChecks(pod *Pod, podUUID string, reporter checks.HealthReporter, minReportInterval time.Duration, debug log.Logger) (*checks.HealthChecks, error) {
 	c := []*checks.HealthCheck{}
 	i := 1
 	for k, s := range pod.Services {
@@ -112,7 +111,7 @@ func toHealthChecks(pod *model.PodDescriptor, podUUID string, reporter checks.He
 	return checks.NewHealthChecks(debug, reporter, minReportInterval, c...), nil
 }
 
-func toHealthIndicator(pod *model.PodDescriptor, app, podUUID string, h *model.HealthCheckDescriptor, debug log.Logger) (checks.HealthIndicator, error) {
+func toHealthIndicator(pod *Pod, app, podUUID string, h *HealthCheckDescriptor, debug log.Logger) (checks.HealthIndicator, error) {
 	switch {
 	case len(h.Command) > 0:
 		cmd := append([]string{"rkt", "enter", "--app=" + app, podUUID}, h.Command...)
@@ -124,7 +123,7 @@ func toHealthIndicator(pod *model.PodDescriptor, app, podUUID string, h *model.H
 	}
 }
 
-func toTags(m map[string]*model.ServiceDescriptor) []string {
+func toTags(m map[string]*Service) []string {
 	t := make([]string, len(m))
 	i := 0
 	for k := range m {
