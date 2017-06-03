@@ -1,6 +1,7 @@
 package launcher
 
 import (
+	"github.com/mgoltzsche/log"
 	"testing"
 )
 
@@ -23,7 +24,7 @@ func TestRead(t *testing.T) {
 }
 
 func assertSubstitution(t *testing.T, expected string, input string) {
-	testee := NewSubstitutes(testenv)
+	testee := NewSubstitutes(testenv, log.NewNopLogger())
 	actual := testee.Substitute(input)
 	if actual != expected {
 		t.Errorf("%q should be replaced with %q but was %q", input, expected, actual)

@@ -112,7 +112,7 @@ func runPod() (err error) {
 	}
 	models := model.NewDescriptors(runOpts.DefaultVolumeDirectory)
 	imgs := model.NewImages(model.PULL_NEW, &fetchImagesAs, debugLog)
-	loader := launcher.NewLoader(models, imgs, runOpts.DefaultVolumeDirectory, debugLog)
+	loader := launcher.NewLoader(models, imgs, runOpts.DefaultVolumeDirectory, errorLog, debugLog)
 	descr, err := models.Descriptor(runOpts.PodFile)
 	if err != nil {
 		return

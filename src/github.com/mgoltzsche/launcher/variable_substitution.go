@@ -1,6 +1,7 @@
 package launcher
 
 import (
+	"github.com/mgoltzsche/log"
 	"regexp"
 	"strings"
 )
@@ -9,10 +10,11 @@ var substitutionRegex = regexp.MustCompile("\\$[a-zA-Z0-9_]+|\\$\\{[a-zA-Z0-9_]+
 
 type Substitutes struct {
 	substitutes map[string]string
+	warn        log.Logger
 }
 
-func NewSubstitutes(env map[string]string) *Substitutes {
-	return &Substitutes{env}
+func NewSubstitutes(env map[string]string, warn log.Logger) *Substitutes {
+	return &Substitutes{env, warn}
 }
 
 func (self *Substitutes) Substitute(v string) string {
@@ -22,6 +24,7 @@ func (self *Substitutes) Substitute(v string) string {
 func (self *Substitutes) substituteExpression(v string) string {
 	varName := ""
 	defaultVal := ""
+	hasDefault := false
 	if v[1] == '{' {
 		// ${VAR:-default} syntax
 		exprEndPos := len(v) - 1
@@ -36,6 +39,7 @@ func (self *Substitutes) substituteExpression(v string) string {
 			}
 			varName = v[2:varEndPos]
 			defaultVal = v[minusPos+1 : exprEndPos]
+			hasDefault = true
 		}
 	} else {
 		// $VAR syntax
@@ -44,7 +48,9 @@ func (self *Substitutes) substituteExpression(v string) string {
 	if s, ok := self.substitutes[varName]; ok {
 		return s
 	} else {
-		// TODO: log undefined variable
+		if !hasDefault {
+			self.warn.Printf("Warn: %s env var is not set. Defaulting to blank string.", varName)
+		}
 		return defaultVal
 	}
 }

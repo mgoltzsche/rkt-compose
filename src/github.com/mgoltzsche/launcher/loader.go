@@ -24,7 +24,7 @@ type Loader struct {
 	debug                log.Logger
 }
 
-func NewLoader(descriptors *model.Descriptors, images *model.Images, defaultVolumeBaseDir string, debug log.Logger) *Loader {
+func NewLoader(descriptors *model.Descriptors, images *model.Images, defaultVolumeBaseDir string, warn, debug log.Logger) *Loader {
 	env := map[string]string{}
 	_, err := os.Stat(".env")
 	if err == nil {
@@ -36,7 +36,7 @@ func NewLoader(descriptors *model.Descriptors, images *model.Images, defaultVolu
 		s := strings.SplitN(e, "=", 2)
 		env[s[0]] = s[1]
 	}
-	return &Loader{descriptors, images, defaultVolumeBaseDir, NewSubstitutes(env), debug}
+	return &Loader{descriptors, images, defaultVolumeBaseDir, NewSubstitutes(env, warn), debug}
 }
 
 func (self *Loader) LoadPod(d *model.PodDescriptor) (pod *Pod, err error) {
