@@ -1,8 +1,5 @@
 {
   "version": 1,
-  "dns": [
-    "host"
-  ],
   "services": {
     "consul": {
       "image": "docker://consul:0.8.2",

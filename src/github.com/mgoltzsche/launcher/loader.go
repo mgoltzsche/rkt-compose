@@ -20,11 +20,23 @@ type Loader struct {
 	descriptors          *model.Descriptors
 	images               *model.Images
 	defaultVolumeBaseDir string
+	substitutes          *Substitutes
 	debug                log.Logger
 }
 
 func NewLoader(descriptors *model.Descriptors, images *model.Images, defaultVolumeBaseDir string, debug log.Logger) *Loader {
-	return &Loader{descriptors, images, defaultVolumeBaseDir, debug}
+	env := map[string]string{}
+	_, err := os.Stat(".env")
+	if err == nil {
+		readEnvFile(".env", env)
+	} else if !os.IsNotExist(err) {
+		debug.Printf("warn: cannot access .env file: %s", err)
+	}
+	for _, e := range os.Environ() {
+		s := strings.SplitN(e, "=", 2)
+		env[s[0]] = s[1]
+	}
+	return &Loader{descriptors, images, defaultVolumeBaseDir, NewSubstitutes(env), debug}
 }
 
 func (self *Loader) LoadPod(d *model.PodDescriptor) (pod *Pod, err error) {
@@ -143,7 +155,8 @@ func (self *Loader) applyService(s *model.ServiceDescriptor, d *model.PodDescrip
 	}
 	if s.Image != "" {
 		t.Image = self.effectiveString(s.Image)
-	} else if s.Build == nil {
+	}
+	if t.Image == "" && s.Build == nil {
 		return fmt.Errorf("service has no image")
 	}
 	if s.Build != nil {
@@ -334,7 +347,7 @@ func (self *Loader) addImageVolumes(pod *Pod) error {
 }
 
 func (self *Loader) effectiveString(v string) string {
-	return v // TODO: substitute variables
+	return self.substitutes.Substitute(v)
 }
 
 func (self *Loader) effectiveStringArray(a []string) []string {

@@ -25,7 +25,8 @@ go install github.com/mgoltzsche/rkt-compose &&
 
 # Build and run tests
 go test github.com/mgoltzsche/checks &&
-sudo GOPATH="$GOPATH" go test github.com/mgoltzsche/model
+go test github.com/mgoltzsche/model &&
+go test github.com/mgoltzsche/launcher
 ) || exit 1
 
 # Run

@@ -12,7 +12,7 @@ func NewPodDescriptor() *PodDescriptor {
 	r.Services = map[string]*ServiceDescriptor{}
 	r.Volumes = map[string]*VolumeDescriptor{}
 	r.Net = []string{}
-	r.Dns = []string{"host"}
+	r.Dns = []string{}
 	r.DnsSearch = []string{}
 	return r
 }
