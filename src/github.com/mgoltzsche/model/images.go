@@ -137,11 +137,12 @@ func (self *Images) importLocalDockerImage(imgName string) error {
 		return fmt.Errorf("Cannot export docker image %q: %s. %s", imgName, err, out)
 	}
 	self.debug.Println("Converting docker image to ACI...")
+	tmpDir := os.TempDir()
 	d2aCfg := docker2aci.FileConfig{
 		CommonConfig: docker2aci.CommonConfig{
 			Squash:      true,
-			OutputDir:   os.TempDir(),
-			TmpDir:      os.TempDir(),
+			OutputDir:   tmpDir,
+			TmpDir:      tmpDir,
 			Compression: common.GzipCompression,
 			Debug:       self.debug,
 			Info:        self.debug,
@@ -149,10 +150,14 @@ func (self *Images) importLocalDockerImage(imgName string) error {
 		DockerURL: "",
 	}
 	aciLayerPaths, err := docker2aci.ConvertSavedFile(dockerImgFile.Name(), d2aCfg)
-	aciFile := filepath.Join(os.TempDir(), toId(imgName)+".aci")
-	defer removeFile(aciFile)
+	if err != nil {
+		return fmt.Errorf("Cannot convert docker image to ACI: %s", err)
+	}
 	if len(aciLayerPaths) < 1 {
-		return fmt.Errorf("Multiple ACI files returned by docker2aci: %s", err)
+		return fmt.Errorf("No ACI files returned by docker2aci")
+	}
+	for _, f := range aciLayerPaths {
+		defer removeFile(f)
 	}
 	self.debug.Println("Importing ACI file...")
 	var stderr bytes.Buffer
