@@ -360,12 +360,6 @@ func (ctx *PodLauncher) toRktRunArgs() (*args, error) {
 	for _, dnsSearch := range pod.DnsSearch {
 		r.add("--dns-search=" + dnsSearch)
 	}
-	if pod.Domainname != "" {
-		if len(pod.Dns) > 0 && pod.Dns[0] == "host" {
-			return nil, fmt.Errorf("cannot set domainname when dns is set to 'host'")
-		}
-		r.add("--dns-domain=" + pod.Domainname)
-	}
 	return r, nil
 }
 

@@ -140,12 +140,8 @@ func runPod() (err error) {
 		// Enable consul service discovery
 		globalNS := "service." + runOpts.ConsulDatacenter + ".consul"
 		localNS := descr.Name + "." + globalNS
-		if len(descr.Dns) > 0 && descr.Dns[0] == "host" {
-			descr.Dns = []string{runOpts.ConsulIP}
-		} else {
-			descr.Dns = append([]string{runOpts.ConsulIP}, descr.Dns...)
-		}
-		descr.DnsSearch = append([]string{localNS, globalNS}, descr.DnsSearch...)
+		pod.Dns = []string{runOpts.ConsulIP}
+		pod.DnsSearch = []string{localNS, globalNS}
 		listener, err := launcher.NewConsulLifecycleFactory("http://"+runOpts.ConsulIP+":"+runOpts.ConsulApiPort, runOpts.ConsulCheckTtl, debugLog)
 		if err != nil {
 			return err
