@@ -24,6 +24,7 @@ To build rkt-compose from source [go](https://golang.org/) 1.8 is required.
 | `--fetch-gid` | 0 | Sets the group used to fetch images |
 
 **COMMAND**:
+
 `run PODFILE` - Runs a pod from the descriptor file. Both pod.json and docker-compose.yml descriptors are supported. If a directory is provided first pod.json and then docker-compose.yml files are looked up.
 
 | Option | Default | Description |
@@ -39,7 +40,7 @@ To build rkt-compose from source [go](https://golang.org/) 1.8 is required.
 | `--consul-datacenter` | dc1 | Consul datacenter |
 | `--consul-check-ttl` | 60s | Consul check TTL |
 
-`dump PODFILE` - Loads a pod model and dumps it as JSON.
+`dump PODFILE` - Loads a pod model and prints it as JSON.
 
 | Option | Default | Description |
 | --- | --- | --- |
