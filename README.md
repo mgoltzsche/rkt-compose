@@ -4,7 +4,7 @@ rkt-compose aims to run existing Docker Compose projects on rkt directly without
 It supports a subset of the [Docker Compose](https://docs.docker.com/compose/compose-file/) file syntax and runs all services of a docker-compose file within a single pod in a wrapped [rkt](https://coreos.com/rkt) process.
 rkt-compose's internal model differs slightly from Docker Compose's model. The internal representation can be marshalled to JSON from a loaded Docker Compose file or directly read from a pod.json file.
 
-[consul](https://www.consul.io/) integration can be enabled to support service discovery and health checks.
+[Consul](https://www.consul.io/) integration can be enabled to support service discovery and health checks.
 
 ## Requirements
 rkt-compose is built for rkt 1.25.0. Earlier rkt versions may also work as long as no explicit IP is declared when publishing a service's port.
@@ -59,7 +59,7 @@ Run consul and the example pod registered at consul (requires free IP 172.16.28.
 rkt-compose run --name=consul --uuid-file=/var/run/consul.uuid --net=default:IP=172.16.28.2 test-resources/consul.yml &
 rkt-compose run --name=examplepod --uuid-file=/var/run/example.uuid --consul-ip=172.16.28.2 test-resources/example-docker-compose-images.yml
 ```
-In the Consul UI at http://172.16.28.2:8500/ can be observed how the pod `examplepod` gets added as consul service, checked and finally removed when the examplepod terminates. Actual services contained in the pod are published as tags of the pod's Consul service.
+In the Consul UI at http://172.16.28.2:8500/ can be observed how `examplepod` gets added as consul service, checked and finally removed when it terminates. Actual services contained in the pod are published as tags of the pod's Consul service.
 
 Ping `consul` from within `examplepod`'s app `myservice` using `rkt enter --app=myservice $(cat /var/run/example.uuid) /bin/ping consul`.
 
@@ -68,7 +68,7 @@ In the consul example rkt's built-in [default](https://coreos.com/blog/rkt-cni-n
 
 Alternative approaches to bind consul to a fixed IP that can also be configured for other pods are:
 1. to publish consul's ports on the gateway IP using `--default-publish-ip=172.16.28.1` and set the same IP as `advertise` address parameter of consul.
-2. to configure a custom [rkt network](https://coreos.com/rkt/docs/latest/networking/overview.html) for consul with a static IP space and make it accessable by other other pods.
+2. to configure a custom [rkt network](https://coreos.com/rkt/docs/latest/networking/overview.html) for consul with a static IP space and make it accessable by other pods.
 
 ## Docker Compose compatibility
 rkt-compose supports the following syntax subset of the Docker Compose model: `volumes`, `services`, `image`, `build`, `command`, `healthcheck`, `ports`, `environment`, `env_file` and variable substitution.
