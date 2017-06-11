@@ -17,16 +17,16 @@ To build rkt-compose from source [go](https://golang.org/) 1.8 is required.
 
 **GLOBALOPTIONS**:
 
-| Option | Default value | Description |
+| Option | Default | Description |
 | --- | --- | --- |
 | `--verbose` | false | Enables verbose logging: tasks and rkt arguments |
 | `--fetch-uid` | 0 | Sets the user used to fetch images |
 | `--fetch-gid` | 0 | Sets the group used to fetch images |
 
 **COMMAND**:
-- `run PODFILE` - Runs a pod from the descriptor file. Both pod.json and docker-compose.yml descriptors are supported. If a directory is provided first pod.json and then docker-compose.yml files are looked up.
+`run PODFILE` - Runs a pod from the descriptor file. Both pod.json and docker-compose.yml descriptors are supported. If a directory is provided first pod.json and then docker-compose.yml files are looked up.
 
-| Option | Default value | Description |
+| Option | Default | Description |
 | --- | --- | --- |
 | `--name` | | Pod name. *Used for service discovery and as default hostname.* |
 | `--uuid-file` | | Pod UUID file. *If provided last container is removed on container start.* |
@@ -39,9 +39,9 @@ To build rkt-compose from source [go](https://golang.org/) 1.8 is required.
 | `--consul-datacenter` | dc1 | Consul datacenter |
 | `--consul-check-ttl` | 60s | Consul check TTL |
 
-- `dump PODFILE` - Loads a pod model and dumps it as JSON.
+`dump PODFILE` - Loads a pod model and dumps it as JSON.
 
-| Option | Default value | Description |
+| Option | Default | Description |
 | --- | --- | --- |
 | `--default-volume-dir` | ./volumes | Default volume base directory. *PODFILE relative directory that is used to derive default volume directories from image volumes.* |
 
@@ -58,7 +58,7 @@ sudo "/home/max/development/go/rkt-compose/bin/rkt-compose" run --name=examplepo
 ```
 In the consul example rkt's built-in `default` network is used. Please note that its 1st free IP is reserved for the consul container which does not work if the IP has already been reserved implicitly by another container that has been started before. In that case the other container must be removed first in order to be able to reserve the consul IP explicitly.
 Alternative approaches to bind consul to a fixed IP that can also be configured for other pods are:
-1. to publish consul's ports on the gateway IP 172.16.28.1 and configure the same IP as `advertise` address in consul.
+1. to publish consul's ports on the gateway IP `172.16.28.1` and configure the same IP as `advertise` address in consul.
 2. to configure a proper custom network with a static IP space that cannot be reserved by other pods in rkt.
 
 ## Docker Compose compatibility
