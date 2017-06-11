@@ -1,7 +1,7 @@
 # rkt-compose
 
 rkt-compose aims to run existing Docker Compose projects on rkt directly without creating dependencies to other more complex tools.
-It supports a subset of the [Docker Compose](https://docs.docker.com/compose/compose-file/) file syntax and runs all services of a docker-compose file within a single pod on [rkt](https://coreos.com/rkt).
+It supports a subset of the [Docker Compose](https://docs.docker.com/compose/compose-file/) file syntax and runs all services of a docker-compose file within a single pod in a wrapped [rkt](https://coreos.com/rkt) process.
 rkt-compose's internal model differs slightly from Docker Compose's model. The internal representation can be marshalled to JSON from a loaded Docker Compose file or directly read from a pod.json file.
 
 [consul](https://www.consul.io/) integration can be enabled to support service discovery and health checks.
