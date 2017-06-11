@@ -16,6 +16,7 @@ To build rkt-compose from source [go](https://golang.org/) 1.8 is required.
 `rkt-compose GLOBALOPTIONS COMMAND OPTIONS ARGUMENT`
 
 **GLOBALOPTIONS**:
+
 | Option | Default value | Description |
 | --- | --- | --- |
 | `--verbose` | false | Enables verbose logging: tasks and rkt arguments |
@@ -24,22 +25,25 @@ To build rkt-compose from source [go](https://golang.org/) 1.8 is required.
 
 **COMMAND**:
 - `run PODFILE` - Runs a pod from the descriptor file. Both pod.json and docker-compose.yml descriptors are supported. If a directory is provided first pod.json and then docker-compose.yml files are looked up.
-  | Option | Default value | Description |
-  | --- | --- | --- |
-  | `--name` | | Pod name. *Used for service discovery and as default hostname.* |
-  | `--uuid-file` | | Pod UUID file. *If provided last container is removed on container start.* |
-  | `--net` | | List of rkt networks |
-  | `--dns` | | List of DNS server IPs |
-  | `--default-volume-dir` | ./volumes | Default volume base directory. *PODFILE relative directory that is used to derive default volume directories from image volumes.* |
-  | `--default-publish-ip` | | IP used to publish pod ports. *While in Docker Compose you can only publish ports on the host's IP in rkt you can set a different IP.* |
-  | `--consul-ip` | | Sets consul IP and enables service discovery. *Registers consul service with TTL check at pod start, initializes healthchecks, syncs consul check during pod runtime, unregisters consul service when pod terminates.* |
-  | `--consul-ip-port` | 8500 | Consul API port |
-  | `--consul-datacenter` | dc1 | Consul datacenter |
-  | `--consul-check-ttl` | 60s | Consul check TTL |
+
+| Option | Default value | Description |
+| --- | --- | --- |
+| `--name` | | Pod name. *Used for service discovery and as default hostname.* |
+| `--uuid-file` | | Pod UUID file. *If provided last container is removed on container start.* |
+| `--net` | | List of rkt networks |
+| `--dns` | | List of DNS server IPs |
+| `--default-volume-dir` | ./volumes | Default volume base directory. *PODFILE relative directory that is used to derive default volume directories from image volumes.* |
+| `--default-publish-ip` | | IP used to publish pod ports. *While in Docker Compose you can only publish ports on the host's IP in rkt you can set a different IP.* |
+| `--consul-ip` | | Sets consul IP and enables service discovery. *Registers consul service with TTL check at pod start, initializes healthchecks, syncs consul check during pod runtime, unregisters consul service when pod terminates.* |
+| `--consul-ip-port` | 8500 | Consul API port |
+| `--consul-datacenter` | dc1 | Consul datacenter |
+| `--consul-check-ttl` | 60s | Consul check TTL |
+
 - `dump PODFILE` - Loads a pod model and dumps it as JSON.
-  | Option | Default value | Description |
-  | --- | --- | --- |
-  | `--default-volume-dir` | ./volumes | Default volume base directory. *PODFILE relative directory that is used to derive default volume directories from image volumes.* |
+
+| Option | Default value | Description |
+| --- | --- | --- |
+| `--default-volume-dir` | ./volumes | Default volume base directory. *PODFILE relative directory that is used to derive default volume directories from image volumes.* |
 
 ### Examples
 Run the example dummy pod:
