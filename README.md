@@ -47,15 +47,17 @@ To build rkt-compose from source [go](https://golang.org/) 1.8 is required.
 | `--default-volume-dir` | ./volumes | Default volume base directory. *PODFILE relative directory that is used to derive default volume directories from image volumes.* |
 
 ### Examples
+The examples shown here should be run within the repository directory.
+
 Run the example dummy pod:
 ```
-sudo "/home/max/development/go/rkt-compose/bin/rkt-compose" run --name=samplepod --uuid-file=/var/run/samplepod.uuid test-resources/example-docker-compose-images.yml
+sudo rkt-compose run --name=samplepod --uuid-file=/var/run/samplepod.uuid test-resources/example-docker-compose-images.yml
 ```
 
 Run consul and the example pod registered at consul:
 ```
-sudo "/home/max/development/go/rkt-compose/bin/rkt-compose" run --name=consul --uuid-file=/var/run/consul.uuid --net=default:IP=172.16.28.2 test-resources/consul.yml &
-sudo "/home/max/development/go/rkt-compose/bin/rkt-compose" run --name=examplepod --uuid-file=/var/run/example.uuid --consul-ip=172.16.28.2 test-resources/example-docker-compose-images.yml
+sudo rkt-compose run --name=consul --uuid-file=/var/run/consul.uuid --net=default:IP=172.16.28.2 test-resources/consul.yml &
+sudo rkt-compose run --name=examplepod --uuid-file=/var/run/example.uuid --consul-ip=172.16.28.2 test-resources/example-docker-compose-images.yml
 ```
 In the consul example rkt's built-in `default` network is used. Please note that its 1st free IP is reserved for the consul container which does not work if the IP has already been reserved implicitly by another container that has been started before. In that case the other container must be removed first in order to be able to reserve the consul IP explicitly.
 Alternative approaches to bind consul to a fixed IP that can also be configured for other pods are:
