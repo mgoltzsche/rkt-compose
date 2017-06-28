@@ -1,5 +1,3 @@
-bin/
-pkg/
-src/gopkg.in/
-src/github.com/appc/
+/build/
+/bin/
 test-resources/volumes/

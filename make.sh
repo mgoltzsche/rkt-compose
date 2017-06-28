@@ -14,7 +14,13 @@ export GOPATH="$(cd "$GOPATH" && pwd)" || exit 1
 set -x
 
 # Format code
-gofmt -w "$GOPATH/src/github.com/mgoltzsche"
+gofmt -w "$GOPATH/src/github.com/mgoltzsche/rkt-compose"
+
+# Create workspace
+mkdir -p build/src/github.com/mgoltzsche/rkt-compose &&
+ln -sf $GOPATH/* "$GOPATH/build/src/github.com/mgoltzsche/rkt-compose/" &&
+rm "$GOPATH/build/src/github.com/mgoltzsche/rkt-compose/build" &&
+export GOPATH="$GOPATH/build" &&
 
 # Fetch dependencies
 go get gopkg.in/yaml.v2 &&
@@ -38,12 +44,16 @@ else
 		___________________________________________________
 
 		rkt-compose has been built and tested successfully!
+		rkt-compose must be run as root.
+
+		Expose binary in \$PATH:
+		  export PATH="\$PATH:$GOPATH/bin"
 
 		Run example pod:
-		  sudo "$GOPATH/bin/rkt-compose" run --name=examplepod --uuid-file=/var/run/examplepod.uuid test-resources/example-docker-compose-images.yml
+		  rkt-compose run --name=examplepod --uuid-file=/var/run/examplepod.uuid test-resources/example-docker-compose-images.yml
 
 		Run consul and example pod registered at consul (requires free IP: 172.16.28.2):
-		  sudo "$GOPATH/bin/rkt-compose" run --name=consul --uuid-file=/var/run/consul.uuid --net=default:IP=172.16.28.2 test-resources/consul.yml &
-		  sudo "$GOPATH/bin/rkt-compose" run --name=examplepod --uuid-file=/var/run/example.uuid --consul-ip=172.16.28.2 test-resources/example-docker-compose-images.yml
+		  rkt-compose run --name=consul --uuid-file=/var/run/consul.uuid --net=default:IP=172.16.28.2 test-resources/consul.yml &
+		  rkt-compose run --name=examplepod --uuid-file=/var/run/example.uuid --consul-ip=172.16.28.2 test-resources/example-docker-compose-images.yml
 	EOF
 fi
