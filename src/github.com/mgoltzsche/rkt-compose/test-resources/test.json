@@ -1,0 +1,114 @@
+{
+  "version": 1,
+  "dns": [
+    "host"
+  ],
+  "services": {
+    "extbuild": {
+      "extends": {
+        "file": "./reference-model-base/reference-model-base.yml",
+        "service": "baseselfbuilt"
+      }
+    },
+    "extservice": {
+      "extends": {
+        "file": "./reference-model-base/reference-model-base.yml",
+        "service": "baseservice"
+      },
+      "env_file": [
+        "./extended.env"
+      ],
+      "environment": {
+        "ADDITIONALVAR": "val",
+        "MYVAR1": "MYVALFROMFILE_OVERWRITTEN_IN_ENVIRONMENT"
+      },
+      "ports": [
+        {
+          "target": 80,
+          "published":  "80",
+          "protocol": "tcp"
+        },
+        {
+          "target": "25",
+          "published": "25",
+          "protocol": "tcp"
+        }
+      ],
+      "mounts": {
+        "/etc/additional.cf": "./additional.cf"
+      }
+    },
+    "myservice": {
+      "image": "docker://owncloud:latest",
+      "entrypoint": [
+        "entrypoint.sh"
+      ],
+      "env_file": [
+        "./extended.env"
+      ],
+      "environment": {
+        "HTTP_HOST": "myservice.example.org",
+        "HTTP_PORT": "5550",
+        "MYVAR1": "MYVALFROMFILE_OVERWRITTEN_IN_ENVIRONMENT"
+      },
+      "ports": [
+        {
+          "target": "5555",
+          "published": "3330",
+          "protocol": "tcp"
+        },
+        {
+          "target": "5556",
+          "published": "3331",
+          "protocol": "tcp"
+        },
+        {
+          "target": "5557",
+          "published": "3332",
+          "protocol": "tcp"
+        },
+        {
+          "target": "5558",
+          "published": "3333",
+          "protocol": "tcp"
+        },
+        {
+          "target": "3330",
+          "published": "2220",
+          "protocol": "udp"
+        },
+        {
+          "target": "3331",
+          "published": "2221",
+          "protocol": "udp"
+        }
+      ]
+    },
+    "selfbuilt1": {
+      "build": {
+        "context": "./docker-build"
+      }
+    },
+    "selfbuilt2": {
+      "build": {
+        "context": "./docker-build",
+        "dockerfile": "Dockerfile-alternate",
+        "args": {
+          "buildno": "1",
+          "featureenabled": "true",
+          "myprop": "myvalue"
+        }
+      }
+    }
+  },
+  "volumes": {
+    "datavol": {
+      "source": "./volumes/datavol",
+      "kind": "host",
+      "readonly": "false"
+    }
+  },
+  "shared_keys": {
+    "http/myservice.example.org": "myservice:5550"
+  }
+}

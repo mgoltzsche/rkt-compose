@@ -3,9 +3,9 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/mgoltzsche/launcher"
-	"github.com/mgoltzsche/log"
-	"github.com/mgoltzsche/model"
+	"github.com/mgoltzsche/rkt-compose/launcher"
+	"github.com/mgoltzsche/rkt-compose/log"
+	"github.com/mgoltzsche/rkt-compose/model"
 	"os"
 	"os/signal"
 	"os/user"

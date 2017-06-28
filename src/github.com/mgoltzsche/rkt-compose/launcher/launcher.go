@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/mgoltzsche/log"
+	"github.com/mgoltzsche/rkt-compose/log"
 	"io/ioutil"
 	"os"
 	"os/exec"

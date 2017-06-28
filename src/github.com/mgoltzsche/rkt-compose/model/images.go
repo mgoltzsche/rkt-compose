@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"github.com/appc/docker2aci/lib"
 	"github.com/appc/docker2aci/lib/common"
-	"github.com/mgoltzsche/log"
+	"github.com/mgoltzsche/rkt-compose/log"
 	"io/ioutil"
 	"os"
 	"os/exec"

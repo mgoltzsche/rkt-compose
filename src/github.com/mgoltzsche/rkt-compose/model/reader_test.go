@@ -9,7 +9,7 @@ import (
 )
 
 func TestRead(t *testing.T) {
-	for _, prefix := range []string{"../../../../test-resources/reference-model", "../../../../test-resources/consul"} {
+	for _, prefix := range []string{"../test-resources/reference-model", "../test-resources/consul"} {
 		dcFile := prefix + ".yml"
 		expectedFile := prefix + ".json"
 		expectedBytes, err := ioutil.ReadFile(expectedFile)

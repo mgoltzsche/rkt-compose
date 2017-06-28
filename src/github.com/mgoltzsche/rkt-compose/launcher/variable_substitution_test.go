@@ -1,7 +1,7 @@
 package launcher
 
 import (
-	"github.com/mgoltzsche/log"
+	"github.com/mgoltzsche/rkt-compose/log"
 	"testing"
 )
 

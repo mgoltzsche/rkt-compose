@@ -2,7 +2,7 @@ package checks
 
 import (
 	"fmt"
-	"github.com/mgoltzsche/log"
+	"github.com/mgoltzsche/rkt-compose/log"
 	"io/ioutil"
 	"math"
 	"os"

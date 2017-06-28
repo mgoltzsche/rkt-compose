@@ -21,12 +21,12 @@ go get gopkg.in/yaml.v2 &&
 go get gopkg.in/appc/docker2aci.v0 &&
 
 # Build linked binary to $GOPATH/bin/rkt-compose
-go install github.com/mgoltzsche/rkt-compose &&
+go build -o bin/rkt-compose github.com/mgoltzsche/rkt-compose/rkt-compose &&
 
 # Build and run tests
-go test github.com/mgoltzsche/checks &&
-go test github.com/mgoltzsche/model &&
-go test github.com/mgoltzsche/launcher
+go test github.com/mgoltzsche/rkt-compose/checks &&
+go test github.com/mgoltzsche/rkt-compose/model &&
+go test github.com/mgoltzsche/rkt-compose/launcher
 ) || exit 1
 
 # Run
