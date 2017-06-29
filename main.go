@@ -46,17 +46,17 @@ var (
 	var dumpOpts DumpOptions*/
 
 	// global options
-	verbose bool
-	fetchUid     string
-	fetchGid     string
+	verbose  bool
+	fetchUid string
+	fetchGid string
 
 	// run options
-	PodFile                string
+	PodFile string
 
 	uuidFile               string
 	name                   string
-	net StringSlice
-	dns StringSlice
+	net                    StringSlice
+	dns                    StringSlice
 	defaultVolumeDirectory string
 	defaultPublishIP       string
 	consulIP               string
@@ -65,8 +65,8 @@ var (
 	consulCheckTtl         time.Duration
 
 	// runtime vars
-	errorLog = log.NewStdLogger(os.Stderr)
-	debugLog = log.NewNopLogger()
+	errorLog      = log.NewStdLogger(os.Stderr)
+	debugLog      = log.NewNopLogger()
 	fetchImagesAs model.UserGroup
 )
 
@@ -82,7 +82,6 @@ func (s *StringSlice) Set(exp string) error {
 func (s *StringSlice) String() string {
 	return fmt.Sprintf("%v", *s)
 }
-
 
 func initFlags() {
 	flag.Usage = func() {
@@ -127,13 +126,13 @@ func main() {
 	var err error
 
 	switch flag.Arg(0) {
-		case "run":
-			err = runPod(flag.Arg(1))
-		case "json":
-			err = dumpJSON(flag.Arg(1))
-		default:
-			errorLog.Printf("Invalid argument %q", flag.Arg(0))
-			os.Exit(1)
+	case "run":
+		err = runPod(flag.Arg(1))
+	case "json":
+		err = dumpJSON(flag.Arg(1))
+	default:
+		errorLog.Printf("Invalid argument %q", flag.Arg(0))
+		os.Exit(1)
 	}
 
 	if err != nil {

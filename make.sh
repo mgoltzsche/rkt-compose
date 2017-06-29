@@ -14,7 +14,7 @@ export GOPATH="$(cd "$GOPATH" && pwd)" || exit 1
 set -x
 
 # Format code
-gofmt -w "$GOPATH/src/github.com/mgoltzsche/rkt-compose"
+gofmt -w "$GOPATH"
 
 # Create workspace
 mkdir -p build/src/github.com/mgoltzsche/rkt-compose &&
