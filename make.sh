@@ -27,7 +27,7 @@ go get gopkg.in/yaml.v2 &&
 go get gopkg.in/appc/docker2aci.v0 &&
 
 # Build linked binary to $GOPATH/bin/rkt-compose
-go build -o bin/rkt-compose github.com/mgoltzsche/rkt-compose/rkt-compose &&
+go build -o bin/rkt-compose github.com/mgoltzsche/rkt-compose &&
 
 # Build and run tests
 go test github.com/mgoltzsche/rkt-compose/checks &&
@@ -38,7 +38,7 @@ go test github.com/mgoltzsche/rkt-compose/launcher
 # Run
 if [ "$1" = run ]; then
 	set -x
-	sudo "$GOPATH/bin/rkt-compose" --verbose=true run --name=examplepod --uuid-file=/var/run/examplepod.uuid test-resources/example-docker-compose-images.yml
+	sudo "$GOPATH/bin/rkt-compose" -verbose=true -name=examplepod -uuid-file=/var/run/examplepod.uuid run test-resources/example-docker-compose-images.yml
 else
 	cat <<-EOF
 		___________________________________________________
@@ -50,10 +50,10 @@ else
 		  export PATH="\$PATH:$GOPATH/bin"
 
 		Run example pod:
-		  rkt-compose run --name=examplepod --uuid-file=/var/run/examplepod.uuid test-resources/example-docker-compose-images.yml
+		  rkt-compose -name=examplepod -uuid-file=/var/run/examplepod.uuid run test-resources/example-docker-compose-images.yml
 
 		Run consul and example pod registered at consul (requires free IP: 172.16.28.2):
-		  rkt-compose run --name=consul --uuid-file=/var/run/consul.uuid --net=default:IP=172.16.28.2 test-resources/consul.yml &
-		  rkt-compose run --name=examplepod --uuid-file=/var/run/example.uuid --consul-ip=172.16.28.2 test-resources/example-docker-compose-images.yml
+		  rkt-compose -name=consul -uuid-file=/var/run/consul.uuid -net=default:IP=172.16.28.2 run test-resources/consul.yml &
+		  rkt-compose -name=examplepod -uuid-file=/var/run/example.uuid -consul-ip=172.16.28.2 run test-resources/example-docker-compose-images.yml
 	EOF
 fi
