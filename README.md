@@ -91,11 +91,13 @@ Also the `healthcheck`'s state is not used to defer startup of dependent contain
 
 ## How to build from source
 Make sure [go](https://golang.org/) 1.8 is installed.
-Clone the rkt-compose repository and run the `./make.sh` script contained in its root directory to build and test the project.
-On success include the produced `rkt-compose` binary into your `PATH`.
+Clone the rkt-compose repository and run the `./make.sh` script contained in its root directory to build and test the project:
 ```
 git clone git@github.com:mgoltzsche/rkt-compose.git &&
 cd rkt-compose &&
-./make.sh &&
-sudo cp bin/rkt-compose /bin/rkt-compose
+./make.sh
+```
+To be able to run the examples you need to include the built `rkt-compose` binary into your `PATH`:
+```
+export PATH="$(pwd)/bin:$PATH"
 ```
