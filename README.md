@@ -70,7 +70,7 @@ Ping `consul` from within `examplepod`'s app `myservice` using `rkt enter -app=m
 In the consul example rkt's built-in [default](https://coreos.com/blog/rkt-cni-networking.html#default-networking) network is used. Please note that its 1st free IP is reserved for the consul container which does not work if the IP has already been reserved implicitly by another container that has been started before. In that case the other container must be removed first in order to be able to reserve the consul IP explicitly.
 
 Alternative approaches to bind consul to a fixed IP that can also be configured for other pods are:
-1. to publish consul's ports on the gateway IP using `--default-publish-ip=172.16.28.1` and set the same IP as `advertise` address parameter of consul.
+1. to publish consul's ports on the gateway IP using `-default-publish-ip=172.16.28.1` and set the same IP as `advertise` address parameter of consul.
 2. to configure a custom [rkt network](https://coreos.com/rkt/docs/latest/networking/overview.html) for consul with a static IP space and make it accessable by other pods.
 
 ## Docker Compose compatibility
