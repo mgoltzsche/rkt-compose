@@ -13,55 +13,58 @@ To build docker images docker must also be installed. This has been tested with 
 To build rkt-compose from source [go](https://golang.org/) 1.8 is required.
 
 ## Usage
-`rkt-compose GLOBALOPTIONS COMMAND OPTIONS ARGUMENT`
+`rkt-compose OPTIONS (run|json) PODFILE`
 
-**GLOBALOPTIONS**:
+- ```run PODFILE``` Runs a pod from the descriptor file. Both pod.json and docker-compose.yml descriptors are supported. If a directory is provided first pod.json and then docker-compose.yml files are looked up.
+- ```dump PODFILE``` Loads a pod model and prints it as JSON.
 
-| Option | Default | Description |
-| --- | --- | --- |
-| `--verbose` | false | Enables verbose logging: tasks and rkt arguments |
-| `--fetch-uid` | 0 | Sets the user used to fetch images |
-| `--fetch-gid` | 0 | Sets the group used to fetch images |
+### Options
 
-**COMMAND**:
-
-`run PODFILE` - Runs a pod from the descriptor file. Both pod.json and docker-compose.yml descriptors are supported. If a directory is provided first pod.json and then docker-compose.yml files are looked up.
+Global Options:
 
 | Option | Default | Description |
 | --- | --- | --- |
-| `--name` | | Pod name. *Used for service discovery and as default hostname.* |
-| `--uuid-file` | | Pod UUID file. *If provided last container is removed on container start.* |
-| `--net` | | List of rkt networks |
-| `--dns` | | List of DNS server IPs |
-| `--default-volume-dir` | ./volumes | Default volume base directory. *PODFILE relative directory that is used to derive default volume directories from image volumes.* |
-| `--default-publish-ip` | | IP used to publish pod ports. *While in Docker Compose you can only publish ports on the host's IP in rkt you can set a different IP.* |
-| `--consul-ip` | | Sets consul IP and enables service discovery. *Registers consul service with TTL check at pod start, initializes healthchecks, syncs consul check during pod runtime, unregisters consul service when pod terminates.* |
-| `--consul-ip-port` | 8500 | Consul API port |
-| `--consul-datacenter` | dc1 | Consul datacenter |
-| `--consul-check-ttl` | 60s | Consul check TTL |
+| `-verbose` | false | Enables verbose logging: tasks and rkt arguments |
+| `-fetch-uid` | 0 | Sets the user used to fetch images |
+| `-fetch-gid` | 0 | Sets the group used to fetch images |
 
-`dump PODFILE` - Loads a pod model and prints it as JSON.
+`run` options:
 
 | Option | Default | Description |
 | --- | --- | --- |
-| `--default-volume-dir` | ./volumes | Default volume base directory. *PODFILE relative directory that is used to derive default volume directories from image volumes.* |
+| `-name` | | Pod name. *Used for service discovery and as default hostname.* |
+| `-uuid-file` | | Pod UUID file. *If provided last container is removed on container start.* |
+| `-net` | | List of rkt networks |
+| `-dns` | | List of DNS server IPs |
+| `-default-volume-dir` | ./volumes | Default volume base directory. *PODFILE relative directory that is used to derive default volume directories from image volumes.* |
+| `-default-publish-ip` | | IP used to publish pod ports. *While in Docker Compose you can only publish ports on the host's IP in rkt you can set a different IP.* |
+| `-consul-ip` | | Sets consul IP and enables service discovery. *Registers consul service with TTL check at pod start, initializes healthchecks, syncs consul check during pod runtime, unregisters consul service when pod terminates.* |
+| `-consul-ip-port` | 8500 | Consul API port |
+| `-consul-datacenter` | dc1 | Consul datacenter |
+| `-consul-check-ttl` | 60s | Consul check TTL |
+
+`json` options:
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `-default-volume-dir` | ./volumes | Default volume base directory. *PODFILE relative directory that is used to derive default volume directories from image volumes.* |
 
 ### Examples
 The examples shown here must be run as root within the repository directory.
 
 Run the example dummy pod:
 ```
-rkt-compose run --name=samplepod --uuid-file=/var/run/samplepod.uuid test-resources/example-docker-compose-images.yml
+rkt-compose -name=samplepod -uuid-file=/var/run/samplepod.uuid run test-resources/example-docker-compose-images.yml
 ```
 
 Run consul and the example pod registered at consul (requires free IP 172.16.28.2, see hint below):
 ```
-rkt-compose run --name=consul --uuid-file=/var/run/consul.uuid --net=default:IP=172.16.28.2 test-resources/consul.yml &
-rkt-compose run --name=examplepod --uuid-file=/var/run/example.uuid --consul-ip=172.16.28.2 test-resources/example-docker-compose-images.yml
+rkt-compose -name=consul -uuid-file=/var/run/consul.uuid -net=default:IP=172.16.28.2 run test-resources/consul.yml &
+rkt-compose -name=examplepod -uuid-file=/var/run/example.uuid -consul-ip=172.16.28.2 run test-resources/example-docker-compose-images.yml
 ```
 In the Consul UI at http://172.16.28.2:8500/ can be observed how `examplepod` gets added as consul service, checked and finally removed when it terminates. Actual services contained in the pod are published as tags of the pod's Consul service.
 
-Ping `consul` from within `examplepod`'s app `myservice` using `rkt enter --app=myservice $(cat /var/run/example.uuid) /bin/ping consul`.
+Ping `consul` from within `examplepod`'s app `myservice` using `rkt enter -app=myservice $(cat /var/run/example.uuid) /bin/ping consul`.
 
 #### Networking hint
 In the consul example rkt's built-in [default](https://coreos.com/blog/rkt-cni-networking.html#default-networking) network is used. Please note that its 1st free IP is reserved for the consul container which does not work if the IP has already been reserved implicitly by another container that has been started before. In that case the other container must be removed first in order to be able to reserve the consul IP explicitly.
